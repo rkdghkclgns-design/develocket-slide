@@ -14,7 +14,7 @@
 
   // 내부 객체(.step, .chip, .toc-card, .ct-card 등)도 개별 선택·이동·크기조절 가능.
   // closest()가 가장 안쪽 selectable을 잡으므로 step/chip을 먼저 두면 그룹이 아닌 개별 칩이 선택된다.
-  var SELECTABLE = ".step,.chip,.cmp-col,.step-row,.toc-card,.ct-card,.duo-col,.eyebrow,.slidetitle,.cover-title,.cover-sub,.cover-course,.closing-title,.closing-lead,.lead,.items,.flow,.chips,.cmp-grid,.steps-list,.keybar,.toc-grid,.col-side,.col-main,.mushcard,.cover-left,.cover-right,.closing-left,.closing-right,.blob,image-slot,.pasted-img,.panel,.st-big,.st-lead,.st-kicker,.duo-title,.cmp-head,.cmp-foot,.tbl";
+  var SELECTABLE = ".step,.chip,.flow .arrow,.cmp-col,.step-row,.toc-card,.ct-card,.duo-col,.eyebrow,.slidetitle,.cover-title,.cover-sub,.cover-course,.closing-title,.closing-lead,.lead,.items,.flow,.chips,.cmp-grid,.steps-list,.keybar,.toc-grid,.col-side,.col-main,.mushcard,.cover-left,.cover-right,.closing-left,.closing-right,.blob,image-slot,.pasted-img,.panel,.st-big,.st-lead,.st-kicker,.duo-title,.cmp-head,.cmp-foot,.tbl";
   var TEXTBLOCK = ".step,.chip,.cmp-col,.cmp-head,.cmp-foot,.step-row,.toc-card,.ct-card,.eyebrow,.slidetitle,.cover-title,.cover-sub,.cover-course,.closing-title,.closing-lead,.lead,.items,.flow,.chips,.keybar,.col-main,.st-big,.st-lead,.st-kicker,.duo-title,.tbl,.panel";
 
   function scale() {
@@ -118,6 +118,9 @@
     if (!editMode) return;
     var tb = e.target.closest(TEXTBLOCK);
     if (!tb || !stage.contains(tb)) return;
+    // 컨테이너(.flow/.chips) 자체를 통째로 텍스트 편집하지 않는다 —
+    // 내부 개별 객체(step/chip)를 더블클릭해야 그 객체만 편집된다
+    if (tb.matches && tb.matches(".flow,.chips")) return;
     startTextEdit(tb);
   }
 
