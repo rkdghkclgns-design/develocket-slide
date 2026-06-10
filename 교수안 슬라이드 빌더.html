@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>교수안 · 슬라이드 빌더</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Jua&family=Gothic+A1:wght@400;500;700;800;900&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/styles.css" />
+<link rel="stylesheet" href="assets/slides.css" />
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- 상단 바 -->
+  <header class="app-bar">
+    <div class="brand">
+      <img class="brand-logo" src="assets/brand-logo.png" alt="디벨로켓" />
+      <div class="brand-text">
+        <h1>교수안 · 슬라이드 빌더</h1>
+        <p>마크다운을 넣으면 교안 문서와 발표 슬라이드로</p>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost" id="btn-help">❓ 도움말</button>
+    <button class="btn btn-ghost" id="btn-back">↩ 처음으로</button>
+  </header>
+
+  <!-- 시작 화면 -->
+  <section class="intro" id="intro">
+    <div class="intro-card">
+      <img class="hero-logo" src="assets/brand-logo.png" alt="디벨로켓" />
+      <h2>MD를 넣으면, 양식이 완성됩니다</h2>
+      <p class="lede">완성된 교수안·편성안 MD를 올려 바로 변환하거나 — <b>소스 원고 MD</b>를 넣어 AI가 교수안·편성안을 자동 생성한 뒤 문서·슬라이드까지 완성합니다.</p>
+
+      <div class="mode-switch">
+        <button class="mode-btn active" data-mode="upload">📂 완성된 MD 올리기</button>
+        <button class="mode-btn" data-mode="generate">✨ 소스 원고로 생성</button>
+      </div>
+
+      <!-- 모드 A: 완성 MD 업로드 -->
+      <div class="mode-panel" id="panel-upload">
+        <div class="drop-grid">
+          <div class="dropzone dz-doc" id="dz-doc">
+            <div class="dz-icon">📖</div>
+            <h3>교수안 .md</h3>
+            <p class="dz-sub">강사 활동·설명·멘트·표가 담긴 교안 마크다운</p>
+            <span class="dz-empty">클릭하거나 파일을 끌어다 놓기</span>
+            <span class="dz-file">✓ <span class="fn"></span></span>
+            <input type="file" id="file-doc" accept=".md,.markdown,.txt" hidden />
+          </div>
+          <div class="dropzone dz-deck" id="dz-deck">
+            <div class="dz-icon">🎬</div>
+            <h3>슬라이드 편성안 .md</h3>
+            <p class="dz-sub">슬라이드별 문구·이미지·핵심 메시지 편성 마크다운</p>
+            <span class="dz-empty">클릭하거나 파일을 끌어다 놓기</span>
+            <span class="dz-file">✓ <span class="fn"></span></span>
+            <input type="file" id="file-deck" accept=".md,.markdown,.txt" hidden />
+          </div>
+        </div>
+        <div class="intro-actions">
+          <button class="btn btn-ghost" id="btn-sample">✨ 샘플로 미리보기</button>
+          <button class="btn btn-primary" id="btn-convert" disabled>변환하기 →</button>
+        </div>
+        <div class="sample-dl">
+          <span class="sample-dl-label">샘플 MD 내려받기</span>
+          <button class="sample-dl-btn" id="dl-sample-doc">📖 교수안.md</button>
+          <button class="sample-dl-btn" id="dl-sample-deck">🎬 슬라이드 편성안.md</button>
+          <span class="sample-dl-label" style="margin-left:14px">이어서 편집</span>
+          <button class="sample-dl-btn" id="btn-import-html">📂 내보낸 HTML 불러오기</button>
+          <input type="file" id="file-import-html" accept=".html,.htm" hidden />
+        </div>
+        <p class="intro-hint">둘 중 하나만 올려도 됩니다. 같은 구조의 <code>--- 프론트매터 ---</code> + <code>### 슬라이드 N - 제목</code> 형식이면 어떤 차시든 동작합니다.</p>
+      </div>
+
+      <!-- 모드 B: 소스 원고로 생성 -->
+      <div class="mode-panel" id="panel-generate" hidden>
+        <div class="dropzone dz-source" id="dz-source">
+          <div class="dz-icon">📝</div>
+          <h3>소스 원고 .md</h3>
+          <p class="dz-sub">주제·개요·섹션이 담긴 강의 원고. AI가 이를 읽고 교수안·편성안 양식으로 재구성합니다.</p>
+          <span class="dz-empty">클릭하거나 파일을 끌어다 놓기</span>
+          <span class="dz-file">✓ <span class="fn"></span></span>
+          <input type="file" id="file-source" accept=".md,.markdown,.txt" hidden />
+        </div>
+        <div class="intro-actions">
+          <button class="btn btn-primary" id="btn-generate" disabled>✨ AI로 생성하기 →</button>
+        </div>
+        <p class="intro-hint">원고를 섹션 단위로 나눠 차례로 생성합니다. 분량에 따라 1~3분 걸릴 수 있어요. 생성된 MD는 <b>검토·편집·다운로드</b> 후 빌드합니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 생성 진행 화면 -->
+  <section class="genprogress" id="genprogress">
+    <div class="gen-card">
+      <div class="gen-spinner">🍁</div>
+      <h2 class="gen-title">AI가 교안을 짓고 있어요</h2>
+      <p class="gen-status" id="gen-status">준비 중…</p>
+      <div class="gen-bar"><div class="gen-bar-fill" id="gen-bar-fill"></div></div>
+      <p class="gen-count"><span id="gen-step">0</span> / <span id="gen-total">0</span> 단계</p>
+      <button class="btn btn-ghost" id="btn-gen-cancel">취소</button>
+    </div>
+  </section>
+
+  <!-- 검토·편집 화면 -->
+  <section class="review" id="review">
+    <div class="review-bar">
+      <div class="review-tabs">
+        <button class="rtab active" data-rt="rdoc">📖 교수안.md</button>
+        <button class="rtab" data-rt="rdeck">🎬 슬라이드 편성안.md</button>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn btn-ghost" id="btn-dl-active">⤓ 이 MD 다운로드</button>
+      <button class="btn btn-ghost" id="btn-regen">↺ 다시 생성</button>
+      <button class="btn btn-primary" id="btn-build">이대로 빌드 →</button>
+    </div>
+    <p class="review-hint">AI 생성 초안입니다. 아래에서 바로 고쳐 빌드하세요. 두 MD 모두 다운로드해 보관할 수 있습니다.</p>
+    <div class="review-panes">
+      <textarea class="review-text rt-pane active" id="rdoc" spellcheck="false"></textarea>
+      <textarea class="review-text rt-pane" id="rdeck" spellcheck="false"></textarea>
+    </div>
+  </section>
+
+  <!-- 결과 화면 -->
+  <section class="result" id="result">
+    <div class="tabbar">
+      <div id="tabbar-tabs" style="display:flex;gap:6px"></div>
+      <div class="spacer"></div>
+      <div class="tab-tools" id="tab-tools" style="display:none">
+        <select class="theme-sel" id="theme-sel" title="슬라이드 템플릿">
+          <option value="maple">🍄 메이플 월드</option>
+          <option value="dark">🌙 디벨로켓 다크</option>
+        </select>
+        <button class="btn btn-ghost" id="btn-prev-step" style="display:none">← 이전 단계</button>
+        <button class="btn btn-ghost" id="btn-edit">✏️ 편집</button>
+        <button class="btn btn-ghost" id="btn-print" data-kind="doc">⤓ PDF</button>
+        <button class="btn btn-ghost" id="btn-html">⤓ HTML</button>
+        <button class="btn btn-ghost" id="btn-pptx">⤓ PPTX</button>
+        <button class="btn btn-ghost" id="btn-reset">새로 만들기</button>
+      </div>
+    </div>
+    <div class="panes">
+      <div class="pane" id="doc-pane">
+        <div class="pane-scroll"><div id="doc-mount"></div></div>
+      </div>
+      <div class="pane" id="deck-pane">
+        <div class="deck-rail" id="deck-rail"></div>
+        <div class="deck-main">
+          <div class="deck-toolbar" id="deck-toolbar" style="display:none">
+            <select id="tb-font" title="글꼴">
+              <option value="'Gothic A1',sans-serif">Gothic A1</option>
+              <option value="'Jua',sans-serif">Jua</option>
+              <option value="system-ui,sans-serif">기본</option>
+            </select>
+            <select id="tb-size" title="크기">
+              <option>24</option><option>28</option><option>31</option><option>36</option><option>42</option><option>48</option><option>60</option><option>72</option><option>96</option><option>132</option>
+            </select>
+            <button data-cmd="bold" title="굵게"><b>B</b></button>
+            <button data-cmd="italic" title="기울임"><i>I</i></button>
+            <button data-cmd="underline" title="밑줄"><u>U</u></button>
+            <button data-cmd="strikeThrough" title="취소선"><s>S</s></button>
+            <input type="color" id="tb-color" value="#2b2240" title="글자색" />
+            <button data-cmd="hilite" data-val="#ffce2e" class="tb-hl" title="형광펜">형광</button>
+            <button data-cmd="hilite" data-val="transparent" title="형광 제거">✕</button>
+            <span class="tb-sep"></span>
+            <button data-cmd="justifyLeft" title="왼쪽 정렬">☰‹</button>
+            <button data-cmd="justifyCenter" title="가운데 정렬">☰</button>
+            <button data-cmd="justifyRight" title="오른쪽 정렬">›☰</button>
+            <button data-cmd="insertUnorderedList" title="글머리 목록">•</button>
+            <button data-cmd="insertOrderedList" title="번호 목록">1.</button>
+            <span class="tb-sep"></span>
+            <button id="btn-layout" title="레이아웃 선택">📐 레이아웃</button>
+            <button id="btn-insert-img" title="이미지 추가">🖼 이미지</button>
+            <button id="btn-del-elem" title="선택한 객체 삭제">✂ 선택 삭제</button>
+            <button id="btn-dup-slide" title="슬라이드 복제">⧉ 복제</button>
+            <button id="btn-add-slide" title="새 슬라이드">＋ 슬라이드</button>
+            <button id="btn-del-slide" title="슬라이드 삭제">🗑 삭제</button>
+          </div>
+          <div id="deck-mount"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- 번들 썸네일 -->
+<template id="__bundler_thumbnail">
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="#bfe6ff"/>
+    <text x="50" y="64" font-size="44" text-anchor="middle">🍁</text>
+  </svg>
+</template>
+
+<script src="assets/image-slot.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+<script src="assets/parser.js"></script>
+<script src="assets/render-doc.js"></script>
+<script src="assets/render-deck.js"></script>
+<script src="assets/editor.js"></script>
+<script src="assets/layouts.js"></script>
+<script src="assets/tutorial.js"></script>
+<script src="assets/generate.js"></script>
+<script src="assets/export.js"></script>
+<script src="assets/sample-data.js"></script>
+<script src="assets/main.js"></script>
+</body>
+</html>

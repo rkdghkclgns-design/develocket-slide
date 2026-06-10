@@ -1,0 +1,11 @@
+# bkit 런타임/상태 (배포 대상 아님)
+.bkit/
+
+# OS / 에디터
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+
+# 디자인 번들 작업 폴더 (로컬 스테이징)
+/_design-bundle/
