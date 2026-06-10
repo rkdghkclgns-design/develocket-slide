@@ -81,7 +81,7 @@
     return '<img class="logo" src="' + (L.src || "assets/logo-worlds.png") + '" alt=""' + (show ? '' : ' style="display:none"') + ' />';
   }
   function pagenum(cur, total) { return ""; } // 페이지 표시 제거 (사용자 요청)
-  function brandfoot(meta) { return '<div class="brandfoot"><span class="mush">🍄</span> ' + esc(meta["교과목"] || "메이플스토리 월드 코딩 교실") + '</div>'; }
+  function brandfoot(meta) { return ""; } // 우측 하단 푸터 제거 (사용자 요청)
   function eyebrow(label) { return '<span class="eyebrow anim"><span class="dot"></span>' + esc(label) + '</span>'; }
   function keybar(key) { return key ? '<div class="keybar anim3"><span class="klab">핵심</span><span>' + inlineMd(key) + '</span></div>' : ""; }
   // 이미지는 절대 잘리지 않도록 항상 contain. fitFrame=true면 프레임이 이미지 비율에 맞춰져

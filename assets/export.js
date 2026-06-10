@@ -188,10 +188,7 @@
         else if (s.kind === "toc") tocSlide(slide, s, accent);
         else contentSlide(slide, s, accent, key, mush);
 
-        // 페이지 번호 / 푸터
-        if (s.kind === "cover" || s.kind === "closing") {
-          slide.addText("🍄 " + (meta["교과목"] || "메이플스토리 월드 코딩 교실"), { x: X(1100), y: Y(990), w: X(756), h: Y(50), align: "right", fontSize: 12, color: C.soft, bold: true });
-        }
+        // 우측 하단 푸터 제거 (사용자 요청)
       });
 
       pptx.writeFile({ fileName: (meta["주제"] || "슬라이드") + ".pptx" }).then(function () { btn.textContent = old; });

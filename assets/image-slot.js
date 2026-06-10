@@ -216,7 +216,25 @@
     '  backdrop-filter:blur(6px)}' +
     '.ctl button:hover{background:rgba(0,0,0,.8)}' +
     '.err{position:absolute;left:8px;bottom:8px;right:8px;color:#b3261e;font-size:11px;' +
-    '  background:rgba(255,255,255,.85);padding:4px 6px;border-radius:5px;pointer-events:none}';
+    '  background:rgba(255,255,255,.85);padding:4px 6px;border-radius:5px;pointer-events:none}' +
+    // AI 이미지 생성 (편집 모드에서만 노출 — :host-context)
+    '.ai-gen{display:none;margin-top:10px;border:1px solid #ffd9c2;background:#fff3ec;color:#e8590c;' +
+    '  font-weight:700;font-size:12px;border-radius:8px;padding:7px 12px;cursor:pointer}' +
+    '.ai-gen:hover{background:#ffe6d5}' +
+    '.aibtn{display:none;position:absolute;top:8px;left:8px;z-index:6;width:34px;height:34px;border:0;' +
+    '  border-radius:9px;background:rgba(232,89,12,.92);color:#fff;font-size:16px;cursor:pointer;' +
+    '  align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.25)}' +
+    '.aibtn:hover{background:#e8590c}' +
+    ':host-context(.deck-viewport.editing) .ai-gen{display:inline-block}' +
+    ':host-context(.deck-viewport.editing) .aibtn{display:flex}' +
+    '.busy{display:none;position:absolute;inset:0;z-index:8;flex-direction:column;gap:10px;' +
+    '  align-items:center;justify-content:center;background:rgba(255,251,240,.82);color:#e8590c;' +
+    '  font-weight:800;font-size:14px}' +
+    ':host([data-loading]) .busy{display:flex}' +
+    ':host([data-loading]) .aibtn{display:none}' +
+    '.busy .sp{width:28px;height:28px;border:3px solid rgba(232,89,12,.25);border-top-color:#e8590c;' +
+    '  border-radius:50%;animation:isspin .8s linear infinite}' +
+    '@keyframes isspin{to{transform:rotate(360deg)}}';
 
   const icon =
     '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
@@ -240,9 +258,13 @@
         '  <img part="image" alt="" draggable="false" style="display:none">' +
         '  <div class="empty" part="empty">' + icon +
         '    <div class="cap"></div>' +
-        '    <div class="sub">or <u>browse files</u></div></div>' +
+        '    <div class="sub">or <u>browse files</u></div>' +
+        '    <button class="ai-gen" data-act="ai" type="button">✨ AI로 이미지 생성</button>' +
+        '  </div>' +
         '  <div class="ring" part="ring"></div>' +
         '</div>' +
+        '<button class="aibtn" data-act="ai" type="button" title="AI 이미지 생성">✨</button>' +
+        '<div class="busy"><div class="sp"></div>AI 이미지 생성 중…</div>' +
         '<div class="spill">' +
         '  <img class="ghost" alt="" draggable="false">' +
         '  <div class="handle" data-c="nw"></div><div class="handle" data-c="ne"></div>' +
@@ -267,9 +289,10 @@
       this._subFn = () => this._render();
       // Shadow-DOM listeners live with the shadow DOM — bound once here so
       // disconnect/reconnect (e.g. React remount) doesn't stack handlers.
-      this._empty.addEventListener('click', () => this._input.click());
+      this._empty.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-act="ai"]')) return; this._input.click(); });
       root.addEventListener('click', (e) => {
         const act = e.target && e.target.getAttribute && e.target.getAttribute('data-act');
+        if (act === 'ai') { e.stopPropagation(); this._aiGen(); return; }
         if (act === 'replace') { this._exitReframe(true); this._input.click(); }
         if (act === 'clear') {
           this._exitReframe(false);
@@ -506,6 +529,30 @@
       this.shadowRoot.appendChild(d);
       this._err = d;
       setTimeout(() => { if (this._err === d) { d.remove(); this._err = null; } }, 3000);
+    }
+
+    // AI 이미지 생성: placeholder(이미지/시각 제안)를 기본 프롬프트로 Gemini 이미지 모델 호출.
+    _aiGen() {
+      if (this.hasAttribute('data-loading')) return;
+      const gen = window.KBuilder && window.KBuilder.genImage;
+      if (typeof gen !== 'function') { this._setError('AI 이미지 생성을 사용할 수 없어요.'); return; }
+      const base = (this.getAttribute('placeholder') || '').trim();
+      const prompt = window.prompt('생성할 이미지를 설명하세요 (수정 가능)', base || '교육 슬라이드용 일러스트');
+      if (prompt == null || !prompt.trim()) return;
+      this.setAttribute('data-loading', '');
+      this._exitReframe(false);
+      const ed = window.KBuilder.editor;
+      if (ed && ed.snapshot) { try { ed.snapshot(); } catch (e) {} }
+      const self = this;
+      gen(prompt.trim()).then((dataUrl) => {
+        self.removeAttribute('data-loading');
+        if (self.id) setSlot(self.id, null); else self._local = null; // 기존 이미지 해제 → src가 보이도록
+        self.setAttribute('src', dataUrl);                            // attributeChangedCallback → _render
+        if (ed && ed.buildRail) { try { ed.buildRail(); } catch (e) {} }
+      }).catch((err) => {
+        self.removeAttribute('data-loading');
+        self._setError('생성 실패: ' + (err && err.message ? err.message : err));
+      });
     }
 
     // Reframing (pan/resize) is only meaningful for fit=cover — contain/fill

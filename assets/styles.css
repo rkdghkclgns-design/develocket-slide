@@ -180,6 +180,16 @@ body {
 .dz-empty { font-size: 12.5px; color: #aab2c0; }
 
 .intro-actions { display: flex; gap: 12px; justify-content: center; margin-top: 30px; }
+/* 소스 원고 직접 붙여넣기 */
+.src-or { display: flex; align-items: center; gap: 12px; margin: 16px 0 10px; color: var(--ink-soft); font-size: 12.5px; }
+.src-or::before, .src-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.source-text {
+  width: 100%; min-height: 140px; resize: vertical; box-sizing: border-box;
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace; font-size: 13px; line-height: 1.55;
+  color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
+}
+.source-text:focus { outline: none; border-color: var(--sky-deep); box-shadow: 0 0 0 3px rgba(111,196,245,.18); }
+.source-text::placeholder { color: #9aa3b2; }
 .gen-model-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 18px 0 2px; flex-wrap: wrap; }
 .gen-model-row label { font-weight: 700; color: var(--ink); font-size: 14px; }
 #gen-model {

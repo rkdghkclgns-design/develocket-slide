@@ -228,6 +228,12 @@ image-slot { display: block; }
 .deck-stage-inner .sel-elem { outline: 4px solid #f5a623 !important; outline-offset: 3px; }
 .deck-viewport.editing .sel-elem { cursor: move; }
 .rs-handle { position: absolute; width: 26px; height: 26px; background: #fff; border: 5px solid #f5a623; border-radius: 50%; z-index: 30; box-sizing: border-box; }
+/* 여러 객체 드래그 선택 박스 (고무줄) */
+.marquee { position: absolute; z-index: 35; border: 2px dashed #f5a623; background: rgba(245,166,35,.14); border-radius: 4px; pointer-events: none; }
+/* PPT식 정렬 가이드선 */
+.align-guide { position: absolute; z-index: 40; pointer-events: none; }
+.align-guide.v { top: 0; height: 1080px; width: 0; border-left: 2px solid #ff3b6b; }
+.align-guide.h { left: 0; width: 1920px; height: 0; border-top: 2px solid #ff3b6b; }
 .rs-nw { left: -13px; top: -13px; cursor: nwse-resize; }
 .rs-ne { right: -13px; top: -13px; cursor: nesw-resize; }
 .rs-sw { left: -13px; bottom: -13px; cursor: nesw-resize; }

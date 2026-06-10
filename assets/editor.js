@@ -141,24 +141,69 @@
     if (ae && ae.isContentEditable) { try { ae.blur(); } catch (e) {} }
   }
 
-  /* ---------------- 이동 (다중 · Shift 축고정 · 임계값 후 absolute 전환) ---------------- */
+  /* ---------------- 정렬 가이드 헬퍼 (PPT식 스마트 가이드) ---------------- */
+  var ALIGN_THRESH = 7;
+  function bestSnap(cands, targets, thresh) {
+    var best = null;
+    cands.forEach(function (c) {
+      targets.forEach(function (tg) {
+        var d = tg - c;
+        if (Math.abs(d) <= thresh && (!best || Math.abs(d) < Math.abs(best.delta))) best = { delta: d, at: tg };
+      });
+    });
+    return best;
+  }
+
+  /* ---------------- 이동 (다중 · Shift 축고정 · 정렬 가이드/스냅 · Ctrl+Z) ---------------- */
   function startMove(e) {
     var sc = scale(), sx = e.clientX, sy = e.clientY, started = false;
     var bases = selected.map(function (el) {
       var abs = !!el.dataset.abs;
-      return { el: el, l: abs ? (parseFloat(el.style.left) || 0) : el.offsetLeft, t: abs ? (parseFloat(el.style.top) || 0) : el.offsetTop };
+      return { el: el, l: abs ? (parseFloat(el.style.left) || 0) : el.offsetLeft, t: abs ? (parseFloat(el.style.top) || 0) : el.offsetTop, w: el.offsetWidth, h: el.offsetHeight };
     });
+    var slideEl = stage.querySelector(".slide[data-deck-active]");
+    var minL = Infinity, maxR = -Infinity, minT = Infinity, maxB = -Infinity;
+    bases.forEach(function (b) { minL = Math.min(minL, b.l); maxR = Math.max(maxR, b.l + b.w); minT = Math.min(minT, b.t); maxB = Math.max(maxB, b.t + b.h); });
+    var xT = [0, 960, 1920], yT = [0, 540, 1080];  // 슬라이드 좌/중앙/우, 상/중앙/하
+    var gv = null, gh = null;
+    function buildTargets() {
+      var frame = slideEl && (slideEl.querySelector(".frame") || slideEl); if (!frame) return;
+      Array.prototype.slice.call(frame.querySelectorAll(SELECTABLE)).forEach(function (el) {
+        if (el.closest(".rs-handle")) return;
+        if (selected.some(function (m) { return m === el || m.contains(el) || el.contains(m); })) return;
+        var l = el.offsetLeft, t = el.offsetTop, w = el.offsetWidth, h = el.offsetHeight;
+        xT.push(l, l + w / 2, l + w); yT.push(t, t + h / 2, t + h);
+      });
+    }
+    function guide(axis, at) {
+      var cur = axis === "v" ? gv : gh;
+      if (at == null) { if (cur) cur.style.display = "none"; return; }
+      if (!cur) { cur = document.createElement("div"); cur.className = "align-guide " + axis; slideEl.appendChild(cur); if (axis === "v") gv = cur; else gh = cur; }
+      if (axis === "v") cur.style.left = at + "px"; else cur.style.top = at + "px";
+      cur.style.display = "block";
+    }
     function mv(ev) {
       var dx = (ev.clientX - sx) / sc, dy = (ev.clientY - sy) / sc;
       if (!started) {
         if (Math.abs(dx) + Math.abs(dy) < 4) return;   // 클릭만으로는 위치 변경 없음
         started = true;
+        snapshot();                                    // 이동도 Ctrl+Z 대상
         bases.forEach(function (b) { absolutize(b.el); });
+        buildTargets();
       }
-      if (ev.shiftKey) { if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0; }  // Shift: 직선 이동
+      if (ev.shiftKey) { if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0; }  // Shift: 직선 이동(스냅 해제)
+      var snapX = ev.shiftKey ? null : bestSnap([minL + dx, (minL + maxR) / 2 + dx, maxR + dx], xT, ALIGN_THRESH);
+      var snapY = ev.shiftKey ? null : bestSnap([minT + dy, (minT + maxB) / 2 + dy, maxB + dy], yT, ALIGN_THRESH);
+      if (snapX) dx += snapX.delta;
+      if (snapY) dy += snapY.delta;
+      guide("v", snapX ? snapX.at : null);
+      guide("h", snapY ? snapY.at : null);
       bases.forEach(function (b) { b.el.style.left = (b.l + dx) + "px"; b.el.style.top = (b.t + dy) + "px"; });
     }
-    function up() { document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up); }
+    function up() {
+      document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up);
+      if (gv) gv.remove(); if (gh) gh.remove();
+    }
     document.addEventListener("mousemove", mv); document.addEventListener("mouseup", up);
     e.preventDefault();
   }
@@ -213,8 +258,10 @@
     var sc = scale(), sx = e.clientX, sy = e.clientY;
     var W = el.offsetWidth, H = el.offsetHeight, L = parseFloat(el.style.left) || 0, T = parseFloat(el.style.top) || 0;
     var ratio = W / (H || 1);
+    var snapped = false;
     if (!el.style.height) el.style.height = H + "px";
     function mv(ev) {
+      if (!snapped) { snapped = true; snapshot(); }   // 크기조절도 Ctrl+Z 대상
       var dx = (ev.clientX - sx) / sc, dy = (ev.clientY - sy) / sc;
       var w = W, h = H, l = L, t = T;
       if (c.indexOf("e") >= 0) w = Math.max(40, W + dx);
@@ -399,7 +446,7 @@
     Array.prototype.slice.call(clone.querySelectorAll("image-slot")).forEach(function (s) {
       var src = slotSrc(s.id); if (src) s.setAttribute("src", src);
     });
-    Array.prototype.slice.call(clone.querySelectorAll(".rs-handle,.marquee")).forEach(function (x) { x.remove(); });
+    Array.prototype.slice.call(clone.querySelectorAll(".rs-handle,.marquee,.align-guide")).forEach(function (x) { x.remove(); });
     Array.prototype.slice.call(clone.querySelectorAll(".sel-elem")).forEach(function (x) { x.classList.remove("sel-elem"); });
     undoStack.push({ html: clone.innerHTML, index: ctrl.index });
     if (undoStack.length > 30) undoStack.shift();
@@ -457,7 +504,7 @@
       clone.style.display = "block"; clone.removeAttribute("data-deck-active");
       clone.querySelectorAll(".rs-handle").forEach(function (x) { x.remove(); });
       clone.querySelectorAll(".sel-elem").forEach(function (x) { x.classList.remove("sel-elem"); });
-      clone.querySelectorAll(".marquee").forEach(function (x) { x.remove(); });
+      clone.querySelectorAll(".marquee, .align-guide").forEach(function (x) { x.remove(); });
       Array.prototype.slice.call(clone.querySelectorAll("image-slot")).forEach(function (s) {
         var src = slotSrc(s.id) || s.getAttribute("src") || "";
         var d = document.createElement("div"); d.setAttribute("style", "width:100%;height:100%;overflow:hidden;background:#f3eee0"); d.className = s.className;

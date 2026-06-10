@@ -53,12 +53,17 @@
   });
   function refreshConvert() { btnConvert.disabled = !(state.docText || state.deckText); }
 
-  /* 소스 드롭존 */
+  /* 소스 드롭존 + 직접 붙여넣기 텍스트영역 (둘 중 무엇이든 가능) */
   var dzSource = document.getElementById("dz-source");
   var btnGenerate = document.getElementById("btn-generate");
+  var srcText = document.getElementById("source-text");
+  function refreshGenerate() { btnGenerate.disabled = !(state.sourceText && state.sourceText.trim()); }
   wireZone(dzSource, document.getElementById("file-source"), function (name, text) {
-    state.sourceText = text; markFilled(dzSource, name); btnGenerate.disabled = !text;
+    state.sourceText = text;
+    if (srcText) srcText.value = text;   // 올린 파일 내용을 붙여넣기 칸에 채워 편집 가능하게
+    markFilled(dzSource, name); refreshGenerate();
   });
+  if (srcText) srcText.addEventListener("input", function () { state.sourceText = srcText.value; refreshGenerate(); });
 
   /* ---------- 모드 전환 ---------- */
   document.querySelectorAll(".mode-btn").forEach(function (b) {

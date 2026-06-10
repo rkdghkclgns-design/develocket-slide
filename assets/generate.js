@@ -357,7 +357,27 @@
       });
   }
 
+  /* ---------- 이미지 생성 (Gemini 이미지 모델 · slide-image 엣지 펑션) ---------- */
+  function genImage(prompt) {
+    var ai = (window.KBuilder && window.KBuilder.AI) || {};
+    if (!ai.imageEndpoint) return Promise.reject(new Error("이미지 생성 백엔드가 설정되지 않았습니다."));
+    return fetch(ai.imageEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: prompt, model: ai.imageModel })
+    }).then(function (res) {
+      return res.text().then(function (raw) {
+        var data = {};
+        try { data = raw ? JSON.parse(raw) : {}; } catch (e) { data = {}; }
+        if (!res.ok || data.error) throw new Error(data.error || ("이미지 서버 오류 (HTTP " + res.status + ")"));
+        if (!data.image) throw new Error("이미지 응답이 비어 있습니다.");
+        return data.image; // data:image/...;base64,...
+      });
+    });
+  }
+
   window.KBuilder = window.KBuilder || {};
   window.KBuilder.generateFromSource = generateFromSource;
+  window.KBuilder.genImage = genImage;            // 이미지 슬롯 AI 생성에서 사용
   window.KBuilder.splitSections = splitSections; // 디버그용
 })();

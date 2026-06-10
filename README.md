@@ -136,7 +136,11 @@ Google Gemini API  →  { text }
 - **설정 변경** — 엔드포인트는 `assets/ai-config.js`에서 바꿀 수 있습니다.
 - **호출 규약** — `POST { prompt: string, model?, temperature?, maxOutputTokens?, thinkingBudget? }` → `200 { text }` / 오류 시 `{ error }`.
 
-> 엣지 펑션 소스는 디벨로켓 Supabase 프로젝트(`NexGen ERP`, ref `pkwbqbxuujpcvndpacsc`)의 `slide-gemini` 함수에 배포되어 있습니다.
+### 🎨 AI 이미지 생성
+
+편집 모드에서 이미지 슬롯의 **✨ AI로 이미지 생성** 버튼을 누르면 `slide-image` 엣지 펑션을 통해 **Gemini 이미지 모델(`gemini-3.1-flash-image-preview`)**로 슬라이드용 일러스트를 생성해 슬롯을 채웁니다. 슬롯의 "이미지/시각" 제안이 기본 프롬프트로 들어가며, 생성 전 설명을 수정할 수 있습니다. 이미지 안에는 글자가 들어가지 않도록 서버에서 지시합니다.
+
+> 엣지 펑션 소스는 디벨로켓 Supabase 프로젝트(`NexGen ERP`, ref `pkwbqbxuujpcvndpacsc`)의 `slide-gemini`(텍스트) · `slide-image`(이미지) 함수에 배포되어 있습니다. 소스 원고로 생성 모드는 파일 업로드 외에 **마크다운 직접 붙여넣기**도 지원합니다.
 
 ## 테스트
 

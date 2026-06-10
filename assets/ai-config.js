@@ -17,5 +17,8 @@ window.KBuilder.AI = {
     { id: "gemini-2.5-pro",        label: "Gemini 2.5 Pro · 최고 품질(느림)" },
     { id: "gemini-2.5-flash",      label: "Gemini 2.5 Flash · 빠른 균형" },
     { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite · 가장 빠름·저렴" }
-  ]
+  ],
+  // 이미지 생성 (Gemini 이미지 모델) — slide-image 엣지 펑션
+  imageEndpoint: "https://pkwbqbxuujpcvndpacsc.supabase.co/functions/v1/slide-image",
+  imageModel: "gemini-3.1-flash-image-preview"
 };
