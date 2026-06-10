@@ -11,8 +11,10 @@
   var editMode = false;
   var textEl = null;
 
-  var SELECTABLE = ".eyebrow,.slidetitle,.cover-title,.cover-sub,.cover-course,.closing-title,.closing-lead,.lead,.items,.flow,.chips,.keybar,.toc-card,.toc-grid,.col-side,.col-main,.mushcard,.cover-left,.cover-right,.closing-left,.closing-right,.blob,image-slot,.pasted-img,.panel,.ct-card,.st-big,.st-lead,.st-kicker,.duo-col,.duo-title,.tbl";
-  var TEXTBLOCK = ".eyebrow,.slidetitle,.cover-title,.cover-sub,.cover-course,.closing-title,.closing-lead,.lead,.items,.flow,.chips,.keybar,.toc-card,.col-main,.st-big,.st-lead,.st-kicker,.duo-title,.tbl,.ct-card,.panel";
+  // 내부 객체(.step, .chip, .toc-card, .ct-card 등)도 개별 선택·이동·크기조절 가능.
+  // closest()가 가장 안쪽 selectable을 잡으므로 step/chip을 먼저 두면 그룹이 아닌 개별 칩이 선택된다.
+  var SELECTABLE = ".step,.chip,.toc-card,.ct-card,.duo-col,.eyebrow,.slidetitle,.cover-title,.cover-sub,.cover-course,.closing-title,.closing-lead,.lead,.items,.flow,.chips,.keybar,.toc-grid,.col-side,.col-main,.mushcard,.cover-left,.cover-right,.closing-left,.closing-right,.blob,image-slot,.pasted-img,.panel,.st-big,.st-lead,.st-kicker,.duo-title,.tbl";
+  var TEXTBLOCK = ".step,.chip,.toc-card,.ct-card,.eyebrow,.slidetitle,.cover-title,.cover-sub,.cover-course,.closing-title,.closing-lead,.lead,.items,.flow,.chips,.keybar,.col-main,.st-big,.st-lead,.st-kicker,.duo-title,.tbl,.panel";
 
   function scale() {
     var s = stage.querySelector(".slide");
@@ -279,8 +281,10 @@
     wrap.dataset.abs = "1";
     wrap.style.cssText = "position:absolute;left:560px;top:240px;width:800px;z-index:4";
     var im = document.createElement("img");
-    im.src = src;
     im.style.cssText = "width:100%;height:100%;object-fit:contain;display:block;border-radius:24px";
+    // 래퍼를 이미지 비율에 맞춰 → 잘림 없이 여백도 없이 영역을 채운다.
+    im.onload = function () { if (im.naturalWidth && im.naturalHeight) wrap.style.aspectRatio = im.naturalWidth + " / " + im.naturalHeight; };
+    im.src = src;
     wrap.appendChild(im);
     frame.appendChild(wrap);
     setSel([wrap]);

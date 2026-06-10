@@ -285,7 +285,7 @@
       });
       // naturalWidth/Height aren't known until load — re-apply so the cover
       // baseline is computed from real dimensions, not the 100%×100% fallback.
-      this._img.addEventListener('load', () => this._applyView());
+      this._img.addEventListener('load', () => { this._applyView(); this._fitFrame(); });
       // Gated on editable + fit=cover so share links and contain/fill slots
       // stay static.
       this.addEventListener('dblclick', (e) => {
@@ -565,6 +565,16 @@
       this._img.style.objectFit = '';
       this._spill.style.width = w; this._spill.style.height = h;
       this._spill.style.left = l; this._spill.style.top = t;
+    }
+
+    // frame="fit": 슬롯 프레임을 이미지의 자연 비율에 맞춘다. object-fit:contain과 함께
+    // 쓰면 이미지가 "잘리지 않으면서" 레터박스 여백 없이 영역을 가득 채운다.
+    _fitFrame() {
+      if (this.getAttribute('frame') !== 'fit') return;
+      const iw = this._img.naturalWidth, ih = this._img.naturalHeight;
+      if (!iw || !ih) return;
+      this.style.aspectRatio = iw + ' / ' + ih;
+      this.style.height = 'auto';
     }
 
     _commitView() {

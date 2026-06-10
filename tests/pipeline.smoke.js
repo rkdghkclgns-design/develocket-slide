@@ -215,6 +215,30 @@ const secOut = K.splitSections(
 ok(secOut.sections.length >= 2, "splitSections: 소스 원고를 2개 이상 섹션으로 분리");
 
 /* ----------------------------------------------------------------
+ * 8) 인라인 마크다운: 덱에서 **굵게**가 <strong>으로 (원문 ** 노출 방지)
+ * ---------------------------------------------------------------- */
+const mdDeck = K.parseDeck([
+  "## 슬라이드 편성", "",
+  "### 슬라이드 1 - 표지", "- 슬라이드 문구:", "  - (제목) 제목",
+  "### 슬라이드 2 - 개념", "- 슬라이드 문구:",
+  "  - **시스템**: 게임의 뼈대 / **콘텐츠**: 게임의 살 / **UI**: 소통",
+  "  - 일반 항목 **강조** 포함",
+  "- 핵심 메시지: **중요** 메시지"
+].join("\n"));
+const mdMount = new Stub();
+K.buildDeck(mdDeck, mdMount);
+ok(/<strong>시스템<\/strong>/.test(mdMount.innerHTML), "덱: 칩 **굵게** → <strong> 변환");
+ok(!/\*\*시스템\*\*/.test(mdMount.innerHTML), "덱: 칩에 ** 원문이 노출되지 않음");
+ok(/<strong>강조<\/strong>/.test(mdMount.innerHTML), "덱: 본문 **굵게** → <strong>");
+ok(/<strong>중요<\/strong>/.test(mdMount.innerHTML), "덱: 핵심 메시지 **굵게** → <strong>");
+
+/* ----------------------------------------------------------------
+ * 9) 이미지 잘림 방지: 슬롯은 contain + frame=fit (cover 미사용)
+ * ---------------------------------------------------------------- */
+ok(!/fit="cover"/.test(deckMount.innerHTML), "덱: 이미지 슬롯에 cover(잘림) 미사용");
+ok(/frame="fit"/.test(deckMount.innerHTML), "덱: 내용 슬라이드 이미지 슬롯 frame=fit");
+
+/* ----------------------------------------------------------------
  * 결과 출력
  * ---------------------------------------------------------------- */
 if (failures.length) {

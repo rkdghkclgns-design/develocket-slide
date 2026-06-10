@@ -1,6 +1,9 @@
 # bkit 런타임/상태 (배포 대상 아님)
 .bkit/
 
+# 로컬 미리보기/개발 도구
+.claude/
+
 # OS / 에디터
 .DS_Store
 Thumbs.db

@@ -3,6 +3,14 @@
 (function () {
   "use strict";
   var esc = function (s) { return window.KBuilder.escapeHtml(s == null ? "" : s); };
+  // 인라인 마크다운(**굵게**, `코드`)을 슬라이드 텍스트에도 적용한다.
+  // 편성안 MD의 ** 가 슬라이드에 그대로 노출되던 문제 해결. (속성/ID에는 쓰지 말 것)
+  function inlineMd(s) {
+    s = esc(s);
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+    return s;
+  }
   var POINTS = ["--pink", "--sky", "--lime", "--orange"];
   function pad2(n) { var s = String(n).replace(/[^0-9]/g, ""); return s.length < 2 ? "0" + s : s; }
 
@@ -30,14 +38,14 @@
       if (!buf.length) return;
       out.push('<ul class="items anim2">' + buf.map(function (b) {
         var sub = b.depth > 0 ? " sub" : "";
-        return '<li class="' + sub.trim() + '"><span class="chk">✓</span><span>' + esc(b.text) + '</span></li>';
+        return '<li class="' + sub.trim() + '"><span class="chk">✓</span><span>' + inlineMd(b.text) + '</span></li>';
       }).join("") + '</ul>');
       buf = [];
     }
     lines.forEach(function (item) {
       var info = tagOf(item.text), text = info.text;
-      if (info.tag === "big" || info.tag === "title" || info.tag === "subtitle") { flush(); out.push('<p class="lead anim" style="font-size:var(--type-subtitle);color:var(--ink);font-weight:700;max-width:none">' + esc(text) + '</p>'); return; }
-      if (info.tag === "foot" || info.tag === "cap") { flush(); out.push('<p class="lead anim3">' + esc(text) + '</p>'); return; }
+      if (info.tag === "big" || info.tag === "title" || info.tag === "subtitle") { flush(); out.push('<p class="lead anim" style="font-size:var(--type-subtitle);color:var(--ink);font-weight:700;max-width:none">' + inlineMd(text) + '</p>'); return; }
+      if (info.tag === "foot" || info.tag === "cap") { flush(); out.push('<p class="lead anim3">' + inlineMd(text) + '</p>'); return; }
       if (isFlow(text)) { flush(); out.push(flowHtml(text)); return; }
       if (isStep(text) && item.depth === 0) { flush(); out.push(stepHtml(text)); return; }
       if (isChips(text) && item.depth === 0) { flush(); out.push(chipsHtml(text)); return; }
@@ -52,17 +60,17 @@
       var m = s.match(/^\s*(\d+)[.)]\s*(.*)$/);
       var no = m ? '<span class="no">' + m[1] + '</span>' : "";
       var lab = m ? m[2] : s;
-      return '<div class="step">' + no + '<span>' + esc(lab) + '</span></div>' + (i < steps.length - 1 ? '<span class="arrow">→</span>' : "");
+      return '<div class="step">' + no + '<span>' + inlineMd(lab) + '</span></div>' + (i < steps.length - 1 ? '<span class="arrow">→</span>' : "");
     }).join("") + '</div>';
   }
   function stepHtml(text) {
     var no = text.match(/^\s*(\d+|[①②③④⑤⑥⑦⑧⑨])/)[1];
     var rest = text.replace(/^\s*(\d+[.)]|[①②③④⑤⑥⑦⑧⑨])\s*/, "");
-    return '<div class="flow anim2"><div class="step"><span class="no">' + esc(no) + '</span><span>' + esc(rest) + '</span></div></div>';
+    return '<div class="flow anim2"><div class="step"><span class="no">' + esc(no) + '</span><span>' + inlineMd(rest) + '</span></div></div>';
   }
   function chipsHtml(text) {
     var parts = text.split(/\s*[\/·]\s*/).map(function (s) { return s.trim(); }).filter(Boolean);
-    return '<div class="chips anim2">' + parts.map(function (p) { return '<span class="chip">' + esc(p) + '</span>'; }).join("") + '</div>';
+    return '<div class="chips anim2">' + parts.map(function (p) { return '<span class="chip">' + inlineMd(p) + '</span>'; }).join("") + '</div>';
   }
 
   /* ---------- 가구 ---------- */
@@ -70,9 +78,12 @@
   function pagenum(cur, total) { return ""; } // 페이지 표시 제거 (사용자 요청)
   function brandfoot(meta) { return '<div class="brandfoot"><span class="mush">🍄</span> ' + esc(meta["교과목"] || "메이플스토리 월드 코딩 교실") + '</div>'; }
   function eyebrow(label) { return '<span class="eyebrow anim"><span class="dot"></span>' + esc(label) + '</span>'; }
-  function keybar(key) { return key ? '<div class="keybar anim3"><span class="klab">핵심</span><span>' + esc(key) + '</span></div>' : ""; }
-  function imgslot(id, placeholder, cls, src) {
-    return '<image-slot id="' + esc(id) + '" class="' + cls + '" shape="rounded" radius="36" fit="' + (src ? "cover" : "contain") + '"' +
+  function keybar(key) { return key ? '<div class="keybar anim3"><span class="klab">핵심</span><span>' + inlineMd(key) + '</span></div>' : ""; }
+  // 이미지는 절대 잘리지 않도록 항상 contain. fitFrame=true면 프레임이 이미지 비율에 맞춰져
+  // 여백(레터박스) 없이 영역을 가득 채운다. (image-slot의 frame="fit" 처리)
+  function imgslot(id, placeholder, cls, src, fitFrame) {
+    return '<image-slot id="' + esc(id) + '" class="' + cls + '" shape="rounded" radius="36" fit="contain"' +
+      (fitFrame ? ' frame="fit"' : '') +
       (src ? ' src="' + src + '"' : '') + ' placeholder="' + esc(placeholder || "이미지를 끌어다 놓기") + '"></image-slot>';
   }
 
@@ -86,8 +97,8 @@
       '<div class="frame cover solo">' +
         '<div class="cover-left">' +
           '<span class="cover-course"><span class="mush">🍄</span> ' + esc(meta["교과목"] || "메이플스토리 월드 코딩 교실") + '</span>' +
-          '<h1 class="cover-title anim">' + esc(title) + '</h1>' +
-          (sub ? '<p class="cover-sub anim2">' + esc(sub) + '</p>' : "") +
+          '<h1 class="cover-title anim">' + inlineMd(title) + '</h1>' +
+          (sub ? '<p class="cover-sub anim2">' + inlineMd(sub) + '</p>' : "") +
         '</div>' +
       '</div>' +
       brandfoot(meta);
@@ -105,10 +116,10 @@
     return logo() +
       '<div class="frame">' +
         eyebrow("AGENDA") +
-        '<h2 class="slidetitle">' + esc(heading) + '</h2>' +
+        '<h2 class="slidetitle">' + inlineMd(heading) + '</h2>' +
         '<div class="toc-grid">' + items.map(function (it, i) {
           var c = "var(" + POINTS[i % 4] + ")";
-          return '<div class="toc-card pop"><div class="no" style="background:' + c + '">' + (i + 1) + '</div><div class="txt">' + esc(it) + '</div></div>';
+          return '<div class="toc-card pop"><div class="no" style="background:' + c + '">' + (i + 1) + '</div><div class="txt">' + inlineMd(it) + '</div></div>';
         }).join("") + '</div>' +
       '</div>' +
       pagenum(num, total);
@@ -144,10 +155,10 @@
     var lead = info.rest.join(" ") || s.key || "";
     return logo() +
       '<div class="frame statement">' +
-        '<span class="st-kicker anim">' + esc(s.title) + '</span>' +
+        '<span class="st-kicker anim">' + inlineMd(s.title) + '</span>' +
         '<span class="st-bar anim"></span>' +
-        '<h2 class="st-big anim2">' + esc(info.big) + '</h2>' +
-        (lead ? '<p class="st-lead anim3">' + esc(lead) + '</p>' : "") +
+        '<h2 class="st-big anim2">' + inlineMd(info.big) + '</h2>' +
+        (lead ? '<p class="st-lead anim3">' + inlineMd(lead) + '</p>' : "") +
       '</div>' +
       pagenum(num, total);
   }
@@ -156,12 +167,12 @@
     return logo() +
       '<div class="frame">' +
         eyebrow(pad2(s.num)) +
-        '<h2 class="slidetitle">' + esc(s.title) + '</h2>' +
+        '<h2 class="slidetitle">' + inlineMd(s.title) + '</h2>' +
         '<div class="card-grid">' + cards.map(function (c, i) {
           var col = "var(" + POINTS[i % 4] + ")";
           return '<div class="ct-card pop"><div class="ct-no" style="background:' + col + '">' + (i + 1) + '</div>' +
-            '<div class="ct-t">' + esc(c.t) + '</div>' +
-            (c.b.length ? '<p class="ct-b">' + esc(c.b.join(" ")) + '</p>' : "") + '</div>';
+            '<div class="ct-t">' + inlineMd(c.t) + '</div>' +
+            (c.b.length ? '<p class="ct-b">' + inlineMd(c.b.join(" ")) + '</p>' : "") + '</div>';
         }).join("") + '</div>' +
         keybar(s.key) +
       '</div>' +
@@ -176,10 +187,10 @@
     return logo() +
       '<div class="frame">' +
         eyebrow(pad2(s.num)) +
-        '<h2 class="slidetitle">' + esc(s.title) + '</h2>' +
+        '<h2 class="slidetitle">' + inlineMd(s.title) + '</h2>' +
         '<div class="cols' + (hasVisual ? (variant.flip ? " flip" : "") : " solo") + '">' +
           '<div class="col-main">' + body + '</div>' +
-          (hasVisual ? '<div class="col-side pop">' + imgslot(key + "-img-" + s.num, s.visual, "imgslot") + '</div>' : "") +
+          (hasVisual ? '<div class="col-side pop">' + imgslot(key + "-img-" + s.num, s.visual, "imgslot", "", true) + '</div>' : "") +
         '</div>' +
         keybar(s.key) +
       '</div>' +
@@ -192,10 +203,10 @@
     return logo() +
       '<div class="frame">' +
         eyebrow("활동 · " + pad2(s.num)) +
-        '<h2 class="slidetitle">' + esc(cleanTitle) + '</h2>' +
+        '<h2 class="slidetitle">' + inlineMd(cleanTitle) + '</h2>' +
         '<div class="cols' + (hasVisual ? "" : " solo") + '">' +
           '<div class="col-main">' + renderBody(s.lines) + '</div>' +
-          (hasVisual ? '<div class="col-side pop">' + imgslot(key + "-img-" + s.num, s.visual, "imgslot") + '</div>' : "") +
+          (hasVisual ? '<div class="col-side pop">' + imgslot(key + "-img-" + s.num, s.visual, "imgslot", "", true) + '</div>' : "") +
         '</div>' +
         keybar(s.key) +
       '</div>' +
@@ -211,8 +222,8 @@
         '<div class="closing-left pop"><div class="mushcard">' + imgslot(key + "-mush-closing", "버섯 캐릭터(교체 가능)", "imgslot", "assets/mushroom.png") + '</div></div>' +
         '<div class="closing-right">' +
           '<span class="cover-course"><span class="mush">🍄</span> ' + esc(s.title) + '</span>' +
-          '<h2 class="closing-title anim">' + esc(big) + '</h2>' +
-          (lead && lead !== big ? '<p class="closing-lead anim2">' + esc(lead) + '</p>' : "") +
+          '<h2 class="closing-title anim">' + inlineMd(big) + '</h2>' +
+          (lead && lead !== big ? '<p class="closing-lead anim2">' + inlineMd(lead) + '</p>' : "") +
         '</div>' +
       '</div>' +
       brandfoot(meta);

@@ -5,7 +5,7 @@
   function nid() { return "tpl-" + (Date.now() % 100000) + "-" + (++nidC); }
   function slot(h) {
     return '<image-slot id="' + nid() + '" class="imgslot" shape="rounded" radius="36" fit="contain"' +
-      (h ? ' style="height:' + h + 'px"' : '') + ' placeholder="이미지를 끌어다 놓기"></image-slot>';
+      (h ? ' frame="fit" style="height:' + h + 'px"' : '') + ' placeholder="이미지를 끌어다 놓기"></image-slot>';
   }
   function logo() { return '<img class="logo" src="assets/logo-worlds.png" alt="" />'; }
   function eb(t) { return '<span class="eyebrow"><span class="dot"></span>' + t + '</span>'; }
@@ -85,7 +85,9 @@
     panel = document.createElement("div");
     panel.className = "layout-panel";
     var grid = LAYOUTS.map(function (L) {
-      return '<div class="lp-item"><div class="lp-name">' + L.name + '</div>' +
+      return '<div class="lp-item">' +
+        '<div class="lp-preview"><div class="lp-stage deck-stage-inner">' + L.make() + '</div></div>' +
+        '<div class="lp-name">' + L.name + '</div>' +
         '<div class="lp-actions"><button data-act="add" data-id="' + L.id + '">＋ 새 슬라이드</button>' +
         '<button data-act="replace" data-id="' + L.id + '">↺ 현재 교체</button></div></div>';
     }).join("");
@@ -116,6 +118,22 @@
       window.KBuilder.editor.buildRail(); ctrl.goTo(i + 1);
     }
   }
+  /* 각 레이아웃의 실제 렌더를 1920 기준으로 축소해 미니 미리보기로 보여준다 */
+  function sizePreviews() {
+    if (!panel) return;
+    var dark = !!document.querySelector("#deck-mount .deck-stage-inner.theme-dark");
+    Array.prototype.slice.call(panel.querySelectorAll(".lp-preview")).forEach(function (box) {
+      var stage = box.querySelector(".lp-stage");
+      if (!stage) return;
+      stage.classList.toggle("theme-dark", dark);
+      var sc = (box.clientWidth || 200) / 1920;
+      stage.style.transform = "scale(" + sc + ")";
+      box.style.height = Math.round(1080 * sc) + "px";
+    });
+  }
   var btn = document.getElementById("btn-layout");
-  if (btn) btn.addEventListener("click", function () { ensurePanel().classList.toggle("open"); });
+  if (btn) btn.addEventListener("click", function () {
+    var p = ensurePanel(); p.classList.toggle("open");
+    if (p.classList.contains("open")) requestAnimationFrame(sizePreviews);
+  });
 })();

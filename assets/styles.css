@@ -664,9 +664,12 @@ body {
   body.print-deck .deck-viewport { position: static !important; background: #fff !important; overflow: visible !important; }
   body.print-deck .deck-scaler { position: static !important; transform: none !important; width: auto !important; height: auto !important; }
   body.print-deck .deck-stage-inner { position: static !important; width: auto !important; height: auto !important; }
+  /* 슬라이드는 relative 유지 — static으로 두면 내부 .frame(absolute)이
+     각 슬라이드를 벗어나 페이지 좌상단으로 겹쳐 쌓인다(겹침 버그). */
   body.print-deck .slide {
-    position: static !important; display: block !important; zoom: .578;
-    page-break-after: always; break-after: page; margin: 0 auto; box-shadow: none; border-radius: 0;
+    position: relative !important; display: block !important; zoom: .578;
+    page-break-after: always; break-after: page; break-inside: avoid;
+    margin: 0 auto; box-shadow: none; border-radius: 0; overflow: hidden;
   }
   body.print-deck .slide:last-child { page-break-after: auto; }
   body.print-deck .slide * { animation: none !important; }
