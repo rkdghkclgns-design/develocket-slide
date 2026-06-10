@@ -269,6 +269,43 @@ ok(typeof K.logoHTML === "function", "render-deck: logoHTML 노출");
 ok(/class="logo"[^>]*display:none/.test(K.logoHTML()), "로고 기본 숨김(display:none)");
 
 /* ----------------------------------------------------------------
+ * 12) 보안: 속성 이스케이프(따옴표) / 링크 스킴 차단
+ * ---------------------------------------------------------------- */
+eq(K.escapeHtml('a"b\'c'), "a&quot;b&#39;c", "escapeHtml: 따옴표(\"/') 이스케이프");
+const xssDeck = K.parseDeck([
+  "## 슬라이드 편성", "",
+  '### 슬라이드 1 - 발표" onmouseover="alert(1)',
+  "- 슬라이드 문구:", "  - 본문 항목"
+].join("\n"));
+const xssMount = new Stub();
+K.buildDeck(xssDeck, xssMount);
+ok(xssMount.innerHTML.indexOf('" onmouseover="') === -1, "덱: 제목의 따옴표가 속성을 깨고 나가지 못함");
+ok(/&quot; onmouseover=/.test(xssMount.innerHTML), "덱: 제목 따옴표가 &quot;로 이스케이프됨");
+
+const linkDoc = K.parseDoc("# 제목\n\n[나쁨](javascript:alert(1)) 그리고 [좋음](https://example.com) 그리고 [목차](#sec)\n");
+const linkMount = new Stub();
+K.buildDoc(linkDoc, linkMount);
+ok(linkMount.innerHTML.indexOf('href="javascript:') === -1, "doc: javascript: 링크 차단");
+ok(/href="https:\/\/example\.com"/.test(linkMount.innerHTML), "doc: https 링크는 허용");
+ok(/href="#sec"/.test(linkMount.innerHTML), "doc: 페이지 내 앵커(#) 허용");
+ok(/나쁨/.test(linkMount.innerHTML), "doc: 차단된 링크는 라벨 텍스트로 유지");
+
+/* ----------------------------------------------------------------
+ * 13) deckHeuristics 노출 — PPTX 내보내기가 화면과 같은 판별을 공유
+ * ---------------------------------------------------------------- */
+ok(K.deckHeuristics && typeof K.deckHeuristics.labeledGroups === "function", "deckHeuristics.labeledGroups 노출");
+const lg = K.deckHeuristics.labeledGroups([
+  { text: "훈련: 교수자 중심 · 수직", depth: 0 },
+  { text: "코칭: 학습자 중심 · 수평", depth: 0 }
+]);
+ok(lg && lg.length === 2 && lg[0].label === "훈련", "labeledGroups: 비교 2그룹 추출");
+const sq = K.deckHeuristics.stepSequence([
+  { text: "1. 접속", depth: 0 }, { text: "2. 선택", depth: 0 }, { text: "3. 저장", depth: 0 }
+]);
+ok(sq && sq.length === 3, "stepSequence: 3단계 추출");
+ok(typeof K.deckHeuristics.footOf === "function" && typeof K.deckHeuristics.splitItems === "function", "footOf/splitItems 노출");
+
+/* ----------------------------------------------------------------
  * 결과 출력
  * ---------------------------------------------------------------- */
 if (failures.length) {

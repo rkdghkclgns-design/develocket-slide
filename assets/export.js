@@ -236,34 +236,104 @@
     });
   }
 
+  /* ---------- 내용 레이아웃별 본문 렌더러 (화면 렌더와 동일한 판별·순서) ---------- */
+  function keybarShape(slide, s, accent, bw) {
+    if (!s.key) return;
+    slide.addShape("roundRect", { x: X(110), y: Y(880), w: X(bw), h: Y(96), fill: { color: accent }, rectRadius: 0.14 });
+    slide.addText([{ text: "핵심 ", options: { fontFace: "Jua", color: "FFFFFF" } }, { text: s.key, options: { color: "FFFFFF", bold: true } }], { x: X(140), y: Y(880), w: X(bw - 60), h: Y(96), valign: "middle", fontSize: PT(28) });
+  }
+  function imageBlock(slide, s, key) {
+    if (!s.visual) return;
+    var img = slotSrc(key + "-img-" + s.num);
+    if (img) slide.addImage({ data: img, x: X(1180), y: Y(330), w: X(610), h: Y(500) });
+    else {
+      slide.addShape("roundRect", { x: X(1180), y: Y(330), w: X(610), h: Y(500), fill: { color: THEME.phFill }, line: { color: THEME.phLine, width: 3 }, rectRadius: 0.1 });
+      slide.addText("🖼  " + (s.visual || "이미지"), { x: X(1210), y: Y(380), w: X(550), h: Y(400), align: "center", valign: "middle", fontSize: PT(26), color: THEME.phText });
+    }
+  }
+  function statementBody(slide, s, st) {
+    slide.addText(st.big, { x: X(160), y: Y(360), w: X(1600), h: Y(320), align: "center", valign: "middle", fontSize: PT(72), fontFace: "Jua", color: C.ink, bold: true });
+    var lead = (st.rest || []).join(" ") || s.key || "";
+    if (lead) slide.addText(lead, { x: X(260), y: Y(700), w: X(1400), h: Y(90), align: "center", fontSize: PT(30), color: C.soft });
+  }
+  function compareBody(slide, s, groups, H) {
+    var n = Math.min(4, groups.length);
+    var gap = 36, x0 = 110, w = (1700 - gap * (n - 1)) / n, y0 = 330, h = s.key ? 460 : 510;
+    groups.slice(0, n).forEach(function (g, i) {
+      var cx = x0 + i * (w + gap);
+      var col = C[POINTS[i % 4]];
+      slide.addShape("roundRect", { x: X(cx), y: Y(y0), w: X(w), h: Y(h), fill: { color: C.paper }, line: { color: THEME.phLine, width: 1 }, rectRadius: 0.06 });
+      slide.addShape("rect", { x: X(cx + 10), y: Y(y0), w: X(w - 20), h: Y(12), fill: { color: col } });
+      slide.addText(g.label, { x: X(cx + 30), y: Y(y0 + 34), w: X(w - 60), h: Y(74), fontSize: PT(38), fontFace: "Jua", color: col, bold: true });
+      var items = (H.splitItems ? H.splitItems(g.body) : [g.body]).filter(Boolean);
+      var runs = items.map(function (t) { return { text: t, options: { bullet: { code: "2022", indent: 12 }, fontSize: PT(26), color: C.ink, paraSpaceAfter: 8 } }; });
+      if (runs.length) slide.addText(runs, { x: X(cx + 30), y: Y(y0 + 120), w: X(w - 60), h: Y(h - 150), valign: "top" });
+    });
+    var foot = H.footOf ? H.footOf(s.lines) : "";
+    if (foot && !s.key) slide.addText(foot, { x: X(260), y: Y(880), w: X(1400), h: Y(70), align: "center", fontSize: PT(26), color: C.soft });
+  }
+  function cardsBody(slide, s, cards) {
+    var n = Math.min(4, cards.length);
+    var gap = 36, x0 = 110, w = (1700 - gap * (n - 1)) / n, y0 = 350, h = s.key ? 430 : 480;
+    cards.slice(0, n).forEach(function (cdef, i) {
+      var cx = x0 + i * (w + gap);
+      var col = C[POINTS[i % 4]];
+      slide.addShape("roundRect", { x: X(cx), y: Y(y0), w: X(w), h: Y(h), fill: { color: C.paper }, line: { color: THEME.phLine, width: 1 }, rectRadius: 0.06 });
+      slide.addText(String(i + 1), { x: X(cx + w / 2 - 38), y: Y(y0 + 36), w: X(76), h: Y(76), fill: { color: col }, color: "FFFFFF", align: "center", valign: "middle", fontFace: "Jua", fontSize: PT(40) });
+      slide.addText(cdef.t, { x: X(cx + 24), y: Y(y0 + 130), w: X(w - 48), h: Y(100), align: "center", fontSize: PT(30), color: C.ink, bold: true });
+      if (cdef.b && cdef.b.length) slide.addText(cdef.b.join(" "), { x: X(cx + 24), y: Y(y0 + 240), w: X(w - 48), h: Y(h - 260), align: "center", fontSize: PT(24), color: C.soft });
+    });
+  }
+  function stepsBody(slide, s, steps, accent, bw) {
+    var n = Math.min(6, steps.length);
+    var gap = 16, areaH = 520, rh = Math.min(90, (areaH - gap * (n - 1)) / n), y = 330;
+    steps.slice(0, n).forEach(function (t, i) {
+      var col = C[POINTS[i % 4]];
+      slide.addShape("roundRect", { x: X(110), y: Y(y), w: X(bw), h: Y(rh), fill: { color: C.paper }, line: { color: accent, width: 1.5 }, rectRadius: 0.12 });
+      slide.addText(String(i + 1), { x: X(132), y: Y(y + (rh - 56) / 2), w: X(56), h: Y(56), fill: { color: col }, color: "FFFFFF", align: "center", valign: "middle", fontFace: "Jua", fontSize: PT(30) });
+      slide.addText(t, { x: X(210), y: Y(y), w: X(bw - 120), h: Y(rh), valign: "middle", fontSize: PT(27), color: C.ink, bold: true });
+      y += rh + gap;
+    });
+  }
+
   function contentSlide(slide, s, accent, key, mush) {
     var isAct = s.kind === "activity";
     var title = isAct ? s.title.replace(/^\[?활동\]?\s*[:：]?\s*/, "") : s.title;
-    // 아이브로
+    var H = window.KBuilder.deckHeuristics || {};
+
+    // 문구(statement) 레이아웃은 화면처럼 큰 제목 없이 작은 키커 + 중앙 큰 문구만 그린다
+    var st = !isAct && H.statementInfo ? H.statementInfo(s.lines) : null;
+    if (st && s.lines.length <= 3) {
+      slide.addText(title, { x: X(260), y: Y(240), w: X(1400), h: Y(60), align: "center", fontSize: PT(26), color: accent, bold: true });
+      statementBody(slide, s, st);
+      return;
+    }
+
+    // 아이브로 + 제목 (문구 외 모든 내용 레이아웃 공통)
     slide.addText((isAct ? "활동 · " : "") + pad2(s.num), { x: X(110), y: Y(96), w: X(400), h: Y(54), fontSize: PT(24), color: C.soft, bold: true });
     slide.addText(title, { x: X(110), y: Y(150), w: X(1500), h: Y(150), fontSize: PT(60), fontFace: "Jua", color: C.ink, bold: true, valign: "top" });
-    // 본문
+
     var hasVisual = !!s.visual;
     var bw = hasVisual ? 980 : 1700;
+
+    // 화면 렌더(renderSlide)와 같은 우선순위: 비교 → 카드 → 단계 → 불릿
+    if (!isAct) {
+      var groups = H.labeledGroups ? H.labeledGroups(s.lines) : null;
+      if (groups) { compareBody(slide, s, groups, H); keybarShape(slide, s, accent, 1700); return; }
+      var cards = H.collectCards ? H.collectCards(s.lines) : null;
+      if (cards) { cardsBody(slide, s, cards); keybarShape(slide, s, accent, 1700); return; }
+      var steps = H.stepSequence ? H.stepSequence(s.lines) : null;
+      if (steps) { stepsBody(slide, s, steps, accent, bw); imageBlock(slide, s, key); keybarShape(slide, s, accent, bw); return; }
+    }
+
+    // 기본: 불릿 + 이미지
     var lines = bodyLines(s);
     var textRuns = lines.map(function (l) {
       return { text: l.text, options: { bullet: l.tag ? false : { code: "2022", indent: 14 }, indentLevel: l.indent, fontSize: l.tag === "big" ? PT(40) : PT(30), color: l.indent ? C.soft : C.ink, bold: l.tag === "big", paraSpaceAfter: 10 } };
     });
     if (textRuns.length) slide.addText(textRuns, { x: X(110), y: Y(330), w: X(bw), h: Y(520), valign: "top" });
-    // 이미지
-    if (hasVisual) {
-      var img = slotSrc(key + "-img-" + s.num);
-      if (img) slide.addImage({ data: img, x: X(1180), y: Y(330), w: X(610), h: Y(500) });
-      else {
-        slide.addShape("roundRect", { x: X(1180), y: Y(330), w: X(610), h: Y(500), fill: { color: THEME.phFill }, line: { color: THEME.phLine, width: 3 }, rectRadius: 0.1 });
-        slide.addText("🖼  " + (s.visual || "이미지"), { x: X(1210), y: Y(380), w: X(550), h: Y(400), align: "center", valign: "middle", fontSize: PT(26), color: THEME.phText });
-      }
-    }
-    // 핵심 메시지
-    if (s.key) {
-      slide.addShape("roundRect", { x: X(110), y: Y(880), w: X(bw + (hasVisual ? 0 : 0)), h: Y(96), fill: { color: accent }, rectRadius: 0.14 });
-      slide.addText([{ text: "핵심 ", options: { fontFace: "Jua", color: "FFFFFF" } }, { text: s.key, options: { color: "FFFFFF", bold: true } }], { x: X(140), y: Y(880), w: X(bw - 60), h: Y(96), valign: "middle", fontSize: PT(28) });
-    }
+    imageBlock(slide, s, key);
+    keybarShape(slide, s, accent, bw);
   }
 
   window.KBuilder = window.KBuilder || {};

@@ -156,7 +156,13 @@
       s = escapeHtml(s);
       s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
       s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
-      s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      // 링크는 안전한 스킴(https?·mailto·페이지 내 앵커)만 허용 — javascript: 등은 라벨 텍스트로만 남긴다
+      s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (m, label, url) {
+        url = url.trim();
+        return /^(https?:|mailto:|#)/i.test(url)
+          ? '<a href="' + url + '" target="_blank" rel="noopener">' + label + '</a>'
+          : label;
+      });
       s = s.replace(/(^|[\s(])((https?:\/\/)[^\s)]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
       return s;
     }
@@ -250,10 +256,13 @@
   }
 
   function escapeHtml(s) {
+    // 따옴표까지 이스케이프 — 이 출력은 텍스트뿐 아니라 HTML 속성값에도 들어간다
     return String(s)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   }
 
   window.KBuilder = window.KBuilder || {};

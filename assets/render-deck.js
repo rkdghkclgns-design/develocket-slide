@@ -415,6 +415,13 @@
   window.KBuilder = window.KBuilder || {};
   window.KBuilder.buildDeck = buildDeck;
   window.KBuilder.logoHTML = logo; // 로고 상태 기반 <img> (layouts/editor 공용)
+  /* 내용→레이아웃 판별 휴리스틱 공유 — PPTX 내보내기가 화면 렌더와 같은 레이아웃을 쓰게 한다 */
+  window.KBuilder.deckHeuristics = {
+    tagOf: tagOf, isFlow: isFlow, isChips: isChips, isStep: isStep,
+    statementInfo: statementInfo, collectCards: collectCards,
+    labeledGroups: labeledGroups, stepSequence: stepSequence,
+    footOf: footOf, splitItems: splitItems
+  };
   /* 내보낸 HTML의 슬라이드를 그대로 장착해 이어서 편집 */
   window.KBuilder.mountDeckHtml = function (slidesHtml, mount, meta) {
     var parsed = { meta: meta || {}, slides: [] };

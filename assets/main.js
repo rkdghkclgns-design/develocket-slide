@@ -95,6 +95,20 @@
     r.readAsText(f, "utf-8");
     importInput.value = "";
   });
+  /* 불러온 HTML에서 실행 가능 요소·핸들러를 제거 (innerHTML 마운트 전 세니타이즈) */
+  function sanitizeImported(root) {
+    Array.prototype.slice.call(root.querySelectorAll("script,iframe,object,embed,link,meta,base,form")).forEach(function (n) { n.remove(); });
+    Array.prototype.slice.call(root.querySelectorAll("*")).forEach(function (el) {
+      // 이름을 먼저 수집한 뒤 제거 — 살아있는 NamedNodeMap을 순회 중 변경하지 않는다
+      var toRemove = [];
+      Array.prototype.slice.call(el.attributes).forEach(function (a) {
+        var n = a.name.toLowerCase();
+        if (n.indexOf("on") === 0 || n === "formaction") { toRemove.push(a.name); return; }
+        if ((n === "href" || n === "src" || n === "xlink:href") && /^\s*javascript:/i.test(String(a.value || ""))) toRemove.push(a.name);
+      });
+      toRemove.forEach(function (name) { el.removeAttribute(name); });
+    });
+  }
   function importDeckHtml(text) {
     var doc = new DOMParser().parseFromString(text, "text/html");
     var stage = doc.querySelector(".deck-stage-inner");
@@ -102,6 +116,7 @@
       alert("지원하지 않는 HTML입니다. 이 빌더에서 내보낸 슬라이드 HTML 파일을 선택해 주세요.");
       return;
     }
+    sanitizeImported(stage);
     var tabbar = document.getElementById("tabbar-tabs");
     tabbar.innerHTML = "";
     if (deckCtrl && deckCtrl.destroy) deckCtrl.destroy();

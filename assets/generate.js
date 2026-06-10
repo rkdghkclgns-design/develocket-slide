@@ -69,14 +69,32 @@
     return null;
   }
 
+  /* 타임아웃 포함 fetch — 엣지 지연 시 진행 화면·스피너가 무한 대기하지 않게 */
+  function fetchWithTimeout(url, opts, ms) {
+    if (typeof AbortController === "undefined") return fetch(url, opts);
+    var ac = new AbortController();
+    var timer = setTimeout(function () { ac.abort(); }, ms);
+    var merged = {};
+    for (var k in opts) merged[k] = opts[k];
+    merged.signal = ac.signal;
+    return fetch(url, merged).then(
+      function (res) { clearTimeout(timer); return res; },
+      function (err) {
+        clearTimeout(timer);
+        if (err && err.name === "AbortError") throw new Error("응답 시간이 초과됐어요. 잠시 후 다시 시도해 주세요.");
+        throw err;
+      }
+    );
+  }
+
   /* 엣지 펑션 호출: POST {prompt, model} → {text} (원시 Gemini 응답도 허용) */
   function callEdge(prompt) {
     var ai = window.KBuilder.AI;
-    return fetch(ai.endpoint, {
+    return fetchWithTimeout(ai.endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt: prompt, model: ai.model })
-    }).then(function (res) {
+    }, 90000).then(function (res) {
       return res.text().then(function (raw) {
         var data = {};
         try { data = raw ? JSON.parse(raw) : {}; } catch (e) { data = {}; }
@@ -361,11 +379,11 @@
   function genImage(prompt) {
     var ai = (window.KBuilder && window.KBuilder.AI) || {};
     if (!ai.imageEndpoint) return Promise.reject(new Error("이미지 생성 백엔드가 설정되지 않았습니다."));
-    return fetch(ai.imageEndpoint, {
+    return fetchWithTimeout(ai.imageEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt: prompt, model: ai.imageModel })
-    }).then(function (res) {
+    }, 120000).then(function (res) {
       return res.text().then(function (raw) {
         var data = {};
         try { data = raw ? JSON.parse(raw) : {}; } catch (e) { data = {}; }
