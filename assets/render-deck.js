@@ -332,6 +332,74 @@
     return '<section class="slide kind-' + s.kind + '" data-screen-label="' + esc(pad2(s.num)) + ' ' + esc(s.title) + '" style="--accent:' + accent + '">' + inner + '</section>';
   }
 
+  /* ---------- 애니메이션 순서 (명시적 번호 — 편집해도 뒤바뀌지 않음) ----------
+     기존 anim/anim2/.../pop 클래스(특히 pop의 nth-child 딜레이)는 DOM 위치에
+     의존해 편집(이동 시 플레이스홀더 삽입, 복제 등)으로 순서가 뒤바뀐다.
+     최초 표시 때 클래스 리듬→DOM 순으로 번호(data-anim-order)를 구워 두고,
+     이후에는 번호 기반 인라인 animation-delay만 사용한다. 새 객체는 항상
+     마지막 번호를 받아 기존 순서를 흔들지 않는다. */
+  var ANIM_SEL = ".anim,.anim2,.anim3,.anim4,.pop,[data-anim-order]";
+  var ANIM_STEP = 0.09; // 번호 간 딜레이(초) — 기존 anim2(.09s) 리듬 유지
+  function animRank(el) {
+    var c = el.classList;
+    if (!c) return 9;
+    if (c.contains("anim")) return 0;
+    if (c.contains("anim2") || c.contains("pop")) return 1;
+    if (c.contains("anim3")) return 2;
+    if (c.contains("anim4")) return 3;
+    return 9;
+  }
+  var animOrder = {
+    ensure: function (slide) {
+      if (!slide || !slide.querySelectorAll) return;
+      var els = Array.prototype.slice.call(slide.querySelectorAll(ANIM_SEL));
+      var max = 0, unnumbered = [];
+      els.forEach(function (el) {
+        var n = parseInt(el.getAttribute && el.getAttribute("data-anim-order"), 10);
+        if (n > 0) { if (n > max) max = n; } else unnumbered.push(el);
+      });
+      if (!unnumbered.length) return;
+      unnumbered
+        .map(function (el, i) { return { el: el, r: animRank(el), i: i }; })
+        .sort(function (a, b) { return a.r - b.r || a.i - b.i; })
+        .forEach(function (x) { x.el.setAttribute("data-anim-order", String(++max)); });
+    },
+    apply: function (slide) {
+      if (!slide || !slide.querySelectorAll) return;
+      Array.prototype.slice.call(slide.querySelectorAll("[data-anim-order]")).forEach(function (el) {
+        var n = parseInt(el.getAttribute("data-anim-order"), 10) || 1;
+        if (el.style) el.style.animationDelay = (Math.max(0, n - 1) * ANIM_STEP).toFixed(2) + "s";
+      });
+    },
+    setOrder: function (slide, el, target) {
+      if (!slide || !slide.querySelectorAll) return;
+      var list = Array.prototype.slice.call(slide.querySelectorAll("[data-anim-order]"))
+        .sort(function (a, b) {
+          return (parseInt(a.getAttribute("data-anim-order"), 10) || 0) - (parseInt(b.getAttribute("data-anim-order"), 10) || 0);
+        });
+      var i = list.indexOf(el);
+      if (i >= 0) list.splice(i, 1);
+      target = Math.max(1, Math.min(list.length + 1, target || 1));
+      list.splice(target - 1, 0, el);
+      list.forEach(function (x, k) { x.setAttribute("data-anim-order", String(k + 1)); });
+      animOrder.apply(slide);
+    },
+    replay: function (slide) {
+      if (!slide || !slide.querySelectorAll) return;
+      var els = Array.prototype.slice.call(slide.querySelectorAll("[data-anim-order]"));
+      els.forEach(function (el) { if (el.style) el.style.animation = "none"; });
+      void (slide.offsetWidth); // 리플로우 강제 → 애니메이션 재시작
+      els.forEach(function (el) { if (el.style) el.style.animation = ""; });
+      animOrder.apply(slide);   // animation 단축속성 조작이 지운 인라인 딜레이 복구
+    },
+    ensureAll: function (stageInner) {
+      if (!stageInner || !stageInner.querySelectorAll) return;
+      Array.prototype.slice.call(stageInner.querySelectorAll(".slide")).forEach(function (s) {
+        animOrder.ensure(s); animOrder.apply(s);
+      });
+    }
+  };
+
   /* ---------- 빌드 + 스테이지 ---------- */
   function buildDeck(parsed, mount) {
     var meta = parsed.meta || {};
@@ -373,6 +441,7 @@
         if (i === idx) { sl.setAttribute("data-deck-active", ""); sl.style.display = "block"; }
         else { sl.removeAttribute("data-deck-active"); sl.style.display = "none"; }
       });
+      if (slides[idx]) { animOrder.ensure(slides[idx]); animOrder.apply(slides[idx]); }
       curEl.textContent = idx + 1;
       totEl.textContent = slides.length;
       if (onShow) onShow(idx, slides);
@@ -415,6 +484,7 @@
   window.KBuilder = window.KBuilder || {};
   window.KBuilder.buildDeck = buildDeck;
   window.KBuilder.logoHTML = logo; // 로고 상태 기반 <img> (layouts/editor 공용)
+  window.KBuilder.animOrder = animOrder; // 애니메이션 순서 (editor/export 공용)
   /* 내용→레이아웃 판별 휴리스틱 공유 — PPTX 내보내기가 화면 렌더와 같은 레이아웃을 쓰게 한다 */
   window.KBuilder.deckHeuristics = {
     tagOf: tagOf, isFlow: isFlow, isChips: isChips, isStep: isStep,

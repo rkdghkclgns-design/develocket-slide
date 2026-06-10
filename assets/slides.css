@@ -168,6 +168,16 @@ image-slot { display: block; }
 
 /* 편집 모드 */
 .deck-viewport.editing [contenteditable="true"] { outline: 2px dashed rgba(245,166,35,.7); outline-offset: 4px; border-radius: 6px; cursor: text; }
+/* 애니메이션 순서 배지 — 편집 모드에서 각 객체의 등장 순서를 번호로 표시 */
+.deck-viewport.editing .slide [data-anim-order] { position: relative; }
+.deck-viewport.editing .slide [data-anim-order]::after {
+  content: attr(data-anim-order);
+  position: absolute; top: -16px; left: -16px; z-index: 26;
+  min-width: 36px; height: 36px; padding: 0 7px; box-sizing: border-box;
+  background: #7c4dff; color: #fff; border: 3px solid #fff; border-radius: 999px;
+  font: 700 20px/30px var(--font-body, sans-serif); text-align: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,.25); pointer-events: none;
+}
 .deck-viewport.editing [contenteditable="true"]:focus { outline: 2px solid var(--mush); background: rgba(255,255,255,.5); }
 
 /* ============================================================

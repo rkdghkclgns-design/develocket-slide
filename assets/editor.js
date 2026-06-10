@@ -351,7 +351,7 @@
     var frame = slide && (slide.querySelector(".frame") || slide); if (!frame) return;
     snapshot();
     var wrap = document.createElement("div");
-    wrap.className = "pasted-img";
+    wrap.className = "pasted-img pop"; // 등장 애니메이션 + 순서 부여 대상
     wrap.dataset.abs = "1";
     wrap.style.cssText = "position:absolute;left:560px;top:240px;width:800px;z-index:4";
     var im = document.createElement("img");
@@ -361,6 +361,7 @@
     im.src = src;
     wrap.appendChild(im);
     frame.appendChild(wrap);
+    if (window.KBuilder.animOrder) { window.KBuilder.animOrder.ensure(slide); window.KBuilder.animOrder.apply(slide); } // 새 객체 = 마지막 순서
     setSel([wrap]);
     if (document.activeElement && document.activeElement.blur) { try { document.activeElement.blur(); } catch (e) {} }
     try { viewport.focus({ preventScroll: true }); } catch (e) {}
@@ -385,8 +386,10 @@
       reassignSlots(n);
       var L = (parseFloat(n.style.left) || 80) + 40, T = (parseFloat(n.style.top) || 80) + 40;
       n.style.position = "absolute"; n.style.left = L + "px"; n.style.top = T + "px"; n.dataset.abs = "1";
+      n.removeAttribute("data-anim-order"); // 붙여넣기 복제본은 새 번호(마지막)를 받는다
       frame.appendChild(n); added.push(n);
     });
+    if (window.KBuilder.animOrder) { window.KBuilder.animOrder.ensure(slide); window.KBuilder.animOrder.apply(slide); }
     setSel(added);
   }
   function reassignSlots(node) {
@@ -423,6 +426,32 @@
     if (delBtn && !delBtn._wired) {
       delBtn._wired = true;
       delBtn.addEventListener("click", function () { if (selected.length) removeSel(); });
+    }
+    // 애니메이션 순서 지정 (1 = 가장 먼저) — 편집 모드 배지 번호와 동일
+    var animBtn = toolbar.querySelector("#btn-anim");
+    if (animBtn && !animBtn._wired) {
+      animBtn._wired = true;
+      animBtn.addEventListener("click", function () {
+        var AO = window.KBuilder.animOrder; if (!AO) return;
+        var slide = stage.querySelector(".slide[data-deck-active]"); if (!slide) return;
+        if (selected.length !== 1) { alert("순서를 지정할 객체를 하나만 선택해 주세요."); return; }
+        var el = selected[0];
+        if (!el.getAttribute("data-anim-order")) {
+          if (!confirm("이 객체에는 등장 애니메이션이 없어요. 애니메이션을 추가할까요?")) return;
+          el.classList.add("pop");
+          AO.ensure(slide);
+        }
+        var total = slide.querySelectorAll("[data-anim-order]").length;
+        var cur = parseInt(el.getAttribute("data-anim-order"), 10) || total;
+        var v = prompt("애니메이션 순서를 입력하세요 (1 = 가장 먼저, 1~" + total + ")", String(cur));
+        if (v == null) return;
+        var n = parseInt(v, 10);
+        if (!n || n < 1) n = 1;
+        if (n > total) n = total;
+        snapshot();             // Ctrl+Z 로 순서 변경도 되돌리기
+        AO.setOrder(slide, el, n);
+        AO.replay(slide);       // 새 순서로 즉시 미리보기
+      });
     }
     toolbar.addEventListener("mousedown", function (e) {
       if (e.target.tagName !== "SELECT" && e.target.tagName !== "INPUT") e.preventDefault();

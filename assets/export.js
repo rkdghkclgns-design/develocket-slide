@@ -52,6 +52,8 @@
     if (!deck || !inner) { alert("먼저 슬라이드를 만들어 주세요."); return; }
     var btn = document.getElementById("btn-html"); var old = btn.textContent; btn.textContent = "⏳ 폰트 포함 중…";
 
+    // 모든 슬라이드의 애니 순서를 굽고 인라인 딜레이를 박아 — 내보낸 HTML도 같은 순서로 재생
+    if (window.KBuilder.animOrder) window.KBuilder.animOrder.ensureAll(inner);
     Promise.all([fetchText("assets/styles.css"), fetchText("assets/slides.css"), getFontCss().catch(function () { return null; })]).then(function (parts) {
       var css = parts[0] + "\n" + parts[1];
       var fontCss = parts[2];

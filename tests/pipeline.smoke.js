@@ -306,6 +306,13 @@ ok(sq && sq.length === 3, "stepSequence: 3단계 추출");
 ok(typeof K.deckHeuristics.footOf === "function" && typeof K.deckHeuristics.splitItems === "function", "footOf/splitItems 노출");
 
 /* ----------------------------------------------------------------
+ * 14) animOrder 노출 — 애니메이션 순서 베이크/적용/지정 API
+ * ---------------------------------------------------------------- */
+ok(K.animOrder && typeof K.animOrder.ensure === "function", "animOrder.ensure 노출");
+ok(typeof K.animOrder.apply === "function" && typeof K.animOrder.setOrder === "function", "animOrder.apply/setOrder 노출");
+ok(typeof K.animOrder.replay === "function" && typeof K.animOrder.ensureAll === "function", "animOrder.replay/ensureAll 노출");
+
+/* ----------------------------------------------------------------
  * 결과 출력
  * ---------------------------------------------------------------- */
 if (failures.length) {
