@@ -283,6 +283,25 @@ image-slot { display: block; }
 /* frame="fit" 슬롯: 이미지 비율에 맞춰 프레임이 늘어나므로 기본 max-height(540) 해제 */
 .imgslot[frame="fit"] { max-height: 760px; }
 
+/* 비교·대조 / 용어 풀이 (label: 내용 2~4개 → 컬럼 카드) */
+.cmp-grid { display: grid; gap: 28px; margin: 38px 0 0; }
+.cmp-grid.cmp-2 { grid-template-columns: 1fr 1fr; }
+.cmp-grid.cmp-3 { grid-template-columns: repeat(3, 1fr); }
+.cmp-grid.cmp-4 { grid-template-columns: repeat(4, 1fr); }
+.cmp-col { background: var(--paper); border-radius: 28px; padding: 34px 32px; box-shadow: 0 14px 32px rgba(43,34,64,.08); border-top: 10px solid var(--c, var(--accent)); }
+.cmp-head { font-family: var(--font-display); font-size: 40px; color: var(--c, var(--accent)); margin: 0 0 18px; line-height: 1.15; word-break: keep-all; }
+.cmp-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 13px; }
+.cmp-list li { font-size: 29px; line-height: 1.35; color: var(--ink); padding-left: 28px; position: relative; }
+.cmp-list li::before { content: "•"; color: var(--c, var(--accent)); position: absolute; left: 4px; font-weight: 900; }
+.cmp-one { font-size: 29px; color: var(--ink); line-height: 1.4; margin: 0; }
+.cmp-foot { font-size: 28px; color: var(--ink-soft); margin: 26px 0 0; text-align: center; word-break: keep-all; }
+
+/* 단계·절차 (번호 목록) */
+.steps-list { display: flex; flex-direction: column; gap: 18px; margin: 34px 0 0; }
+.step-row { display: flex; align-items: center; gap: 22px; background: var(--paper); border: 3px solid var(--accent); border-radius: 18px; padding: 18px 28px; box-shadow: 0 10px 24px rgba(43,34,64,.06); }
+.step-num { flex-shrink: 0; width: 56px; height: 56px; border-radius: 14px; color: #fff; font-family: var(--font-display); font-size: 30px; display: grid; place-items: center; }
+.step-txt { font-size: var(--type-body); color: var(--ink); font-weight: 700; line-height: 1.35; word-break: keep-all; }
+
 /* 다크 테마 대응 */
 .theme-dark .ct-card, .theme-dark .panel { background: #18233a; border: 1px solid rgba(255,255,255,.07); box-shadow: 0 10px 26px rgba(0,0,0,.35); }
 .theme-dark .ct-no { background: #123047 !important; color: #4fc7f0; }

@@ -157,7 +157,7 @@
     document.getElementById("btn-print").dataset.kind = target;
     // 편집/HTML/PPTX는 슬라이드 탭에서만
     var deckOnly = target === "deck";
-    ["btn-edit", "btn-html", "btn-pptx", "theme-sel"].forEach(function (id) {
+    ["btn-edit", "btn-html", "btn-pptx", "theme-sel", "btn-logo"].forEach(function (id) {
       document.getElementById(id).style.display = deckOnly ? "inline-flex" : "none";
     });
     if (!deckOnly && K.editor) K.editor.setEdit(false);
@@ -172,6 +172,66 @@
     [stage, railEl].forEach(function (el) { if (el) el.classList.toggle("theme-dark", t === "dark"); });
   }
   document.getElementById("theme-sel").addEventListener("change", function () { applyTheme(this.value); });
+
+  /* ---------- 로고 (사용자 업로드 + 표시 토글, 기본 숨김) ---------- */
+  K.logo = {
+    src: localStorage.getItem("kb-logo-src") || "",
+    shown: localStorage.getItem("kb-logo-shown") === "1"
+  };
+  K.applyLogo = function () {
+    var L = K.logo || {};
+    var show = !!(L.shown && L.src);
+    Array.prototype.slice.call(document.querySelectorAll("#deck-mount .logo, #deck-rail .logo")).forEach(function (im) {
+      im.src = L.src || "assets/logo-worlds.png";
+      im.style.display = show ? "" : "none";
+    });
+  };
+  function persistLogo() {
+    try {
+      if (K.logo.src) localStorage.setItem("kb-logo-src", K.logo.src); else localStorage.removeItem("kb-logo-src");
+      localStorage.setItem("kb-logo-shown", K.logo.shown ? "1" : "0");
+    } catch (e) { /* 용량 초과 등은 세션 메모리로만 유지 */ }
+  }
+  (function buildLogoControl() {
+    var btn = document.getElementById("btn-logo");
+    if (!btn) return;
+    var pop = document.createElement("div");
+    pop.className = "logo-pop";
+    pop.innerHTML =
+      '<div class="lg-row"><div class="lg-prev" id="lg-prev">로고 없음</div></div>' +
+      '<button class="lg-btn" id="lg-up">📂 로고 이미지 업로드</button>' +
+      '<label class="lg-toggle"><input type="checkbox" id="lg-show" /> 슬라이드에 로고 표시</label>' +
+      '<button class="lg-btn lg-danger" id="lg-rm">🗑 로고 제거</button>' +
+      '<p class="lg-hint">우측 상단에 표시됩니다. 투명 PNG 권장.</p>';
+    document.body.appendChild(pop);
+    var fin = document.createElement("input");
+    fin.type = "file"; fin.accept = "image/*"; fin.hidden = true; document.body.appendChild(fin);
+    var prev = pop.querySelector("#lg-prev");
+    var chk = pop.querySelector("#lg-show");
+    function syncPop() {
+      chk.checked = !!(K.logo.shown && K.logo.src);
+      chk.disabled = !K.logo.src;
+      prev.innerHTML = K.logo.src ? '<img src="' + K.logo.src + '" alt="logo" />' : "로고 없음";
+    }
+    function openPop() {
+      var r = btn.getBoundingClientRect();
+      pop.style.top = (r.bottom + 8) + "px";
+      pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 280)) + "px";
+      syncPop(); pop.classList.add("open");
+    }
+    function closePop() { pop.classList.remove("open"); }
+    btn.addEventListener("click", function (e) { e.stopPropagation(); pop.classList.contains("open") ? closePop() : openPop(); });
+    document.addEventListener("click", function (e) { if (pop.classList.contains("open") && !pop.contains(e.target) && e.target !== btn) closePop(); });
+    pop.querySelector("#lg-up").addEventListener("click", function () { fin.click(); });
+    fin.addEventListener("change", function () {
+      var f = fin.files && fin.files[0]; if (!f) return;
+      var fr = new FileReader();
+      fr.onload = function () { K.logo.src = String(fr.result); K.logo.shown = true; persistLogo(); K.applyLogo(); syncPop(); };
+      fr.readAsDataURL(f); fin.value = "";
+    });
+    chk.addEventListener("change", function () { K.logo.shown = chk.checked; persistLogo(); K.applyLogo(); });
+    pop.querySelector("#lg-rm").addEventListener("click", function () { K.logo.src = ""; K.logo.shown = false; persistLogo(); K.applyLogo(); syncPop(); });
+  })();
 
   /* ---------- 편집 모드 / 슬라이드 조작 / 내보내기 ---------- */
   document.getElementById("btn-edit").addEventListener("click", function () { if (K.editor) K.editor.setEdit(!K.editor.isEditing()); });

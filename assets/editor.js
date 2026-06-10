@@ -13,8 +13,8 @@
 
   // 내부 객체(.step, .chip, .toc-card, .ct-card 등)도 개별 선택·이동·크기조절 가능.
   // closest()가 가장 안쪽 selectable을 잡으므로 step/chip을 먼저 두면 그룹이 아닌 개별 칩이 선택된다.
-  var SELECTABLE = ".step,.chip,.toc-card,.ct-card,.duo-col,.eyebrow,.slidetitle,.cover-title,.cover-sub,.cover-course,.closing-title,.closing-lead,.lead,.items,.flow,.chips,.keybar,.toc-grid,.col-side,.col-main,.mushcard,.cover-left,.cover-right,.closing-left,.closing-right,.blob,image-slot,.pasted-img,.panel,.st-big,.st-lead,.st-kicker,.duo-title,.tbl";
-  var TEXTBLOCK = ".step,.chip,.toc-card,.ct-card,.eyebrow,.slidetitle,.cover-title,.cover-sub,.cover-course,.closing-title,.closing-lead,.lead,.items,.flow,.chips,.keybar,.col-main,.st-big,.st-lead,.st-kicker,.duo-title,.tbl,.panel";
+  var SELECTABLE = ".step,.chip,.cmp-col,.step-row,.toc-card,.ct-card,.duo-col,.eyebrow,.slidetitle,.cover-title,.cover-sub,.cover-course,.closing-title,.closing-lead,.lead,.items,.flow,.chips,.cmp-grid,.steps-list,.keybar,.toc-grid,.col-side,.col-main,.mushcard,.cover-left,.cover-right,.closing-left,.closing-right,.blob,image-slot,.pasted-img,.panel,.st-big,.st-lead,.st-kicker,.duo-title,.cmp-head,.cmp-foot,.tbl";
+  var TEXTBLOCK = ".step,.chip,.cmp-col,.cmp-head,.cmp-foot,.step-row,.toc-card,.ct-card,.eyebrow,.slidetitle,.cover-title,.cover-sub,.cover-course,.closing-title,.closing-lead,.lead,.items,.flow,.chips,.keybar,.col-main,.st-big,.st-lead,.st-kicker,.duo-title,.tbl,.panel";
 
   function scale() {
     var s = stage.querySelector(".slide");
@@ -404,7 +404,7 @@
     var sec = document.createElement("section");
     sec.className = "slide kind-content"; sec.setAttribute("data-screen-label", "새 슬라이드");
     sec.setAttribute("style", "--accent:var(--sky)");
-    sec.innerHTML = '<img class="logo" src="assets/logo-worlds.png" alt="" />' +
+    sec.innerHTML = ((window.KBuilder && window.KBuilder.logoHTML) ? window.KBuilder.logoHTML() : '') +
       '<div class="frame"><span class="eyebrow"><span class="dot"></span>새 슬라이드</span>' +
       '<h2 class="slidetitle">제목을 입력하세요</h2>' +
       '<div class="cols solo"><div class="col-main"><ul class="items"><li><span class="chk">✓</span><span>내용을 입력하세요</span></li></ul></div></div></div>';
@@ -443,6 +443,7 @@
       rail.appendChild(thumb);
     });
     markRail(ctrl.index);
+    if (window.KBuilder.applyLogo) window.KBuilder.applyLogo(); // 로고 상태를 본문/레일에 반영
   }
   function markRail(i) {
     if (!rail) return;

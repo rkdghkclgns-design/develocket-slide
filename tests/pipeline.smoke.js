@@ -239,6 +239,36 @@ ok(!/fit="cover"/.test(deckMount.innerHTML), "덱: 이미지 슬롯에 cover(잘
 ok(/frame="fit"/.test(deckMount.innerHTML), "덱: 내용 슬라이드 이미지 슬롯 frame=fit");
 
 /* ----------------------------------------------------------------
+ * 10) 내용 기반 레이아웃 — 비교·대조 → cmp-grid, 번호목록 → steps-list
+ * ---------------------------------------------------------------- */
+const cmpDeck = K.parseDeck([
+  "## 슬라이드 편성", "",
+  "### 슬라이드 1 - 비교", "- 슬라이드 문구:",
+  "  - 훈련: 교수자 중심 · 지식 전달 · 수직",
+  "  - 코칭: 학습자 중심 · 성찰 유도 · 수평",
+  "- 핵심 메시지: 스스로 답을 찾는다"
+].join("\n"));
+const cmpMount = new Stub();
+K.buildDeck(cmpDeck, cmpMount);
+ok(/class="cmp-grid cmp-2"/.test(cmpMount.innerHTML), "비교 내용 → 2단 cmp-grid 레이아웃");
+ok(/cmp-head[^>]*>훈련</.test(cmpMount.innerHTML), "비교 컬럼 헤더(훈련) 렌더");
+
+const stepDeck = K.parseDeck([
+  "## 슬라이드 편성", "",
+  "### 슬라이드 1 - 절차", "- 슬라이드 문구:",
+  "  - 1. 링크 접속", "  - 2. 캐릭터 선택", "  - 3. 결과 저장"
+].join("\n"));
+const stepMount = new Stub();
+K.buildDeck(stepDeck, stepMount);
+ok(/class="steps-list"/.test(stepMount.innerHTML), "번호 목록 → steps-list 레이아웃");
+
+/* ----------------------------------------------------------------
+ * 11) 로고: 기본 숨김 (state 미설정 시 display:none)
+ * ---------------------------------------------------------------- */
+ok(typeof K.logoHTML === "function", "render-deck: logoHTML 노출");
+ok(/class="logo"[^>]*display:none/.test(K.logoHTML()), "로고 기본 숨김(display:none)");
+
+/* ----------------------------------------------------------------
  * 결과 출력
  * ---------------------------------------------------------------- */
 if (failures.length) {

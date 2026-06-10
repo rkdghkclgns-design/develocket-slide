@@ -7,7 +7,7 @@
     return '<image-slot id="' + nid() + '" class="imgslot" shape="rounded" radius="36" fit="contain"' +
       (h ? ' frame="fit" style="height:' + h + 'px"' : '') + ' placeholder="이미지를 끌어다 놓기"></image-slot>';
   }
-  function logo() { return '<img class="logo" src="assets/logo-worlds.png" alt="" />'; }
+  function logo() { return (window.KBuilder && window.KBuilder.logoHTML) ? window.KBuilder.logoHTML() : '<img class="logo" src="assets/logo-worlds.png" alt="" style="display:none" />'; }
   function eb(t) { return '<span class="eyebrow"><span class="dot"></span>' + t + '</span>'; }
   function sec(kind, accent, inner) {
     return '<section class="slide kind-' + kind + '" data-screen-label="새 슬라이드" style="--accent:var(--' + accent + ')">' + logo() + inner + '</section>';

@@ -74,7 +74,12 @@
   }
 
   /* ---------- 가구 ---------- */
-  function logo() { return '<img class="logo" src="assets/logo-worlds.png" alt="MapleStory Worlds" />'; }
+  // 로고: 사용자가 업로드한 src가 있고 표시(shown)일 때만 보인다. 기본은 숨김.
+  function logo() {
+    var L = (window.KBuilder && window.KBuilder.logo) || {};
+    var show = !!(L.shown && L.src);
+    return '<img class="logo" src="' + (L.src || "assets/logo-worlds.png") + '" alt=""' + (show ? '' : ' style="display:none"') + ' />';
+  }
   function pagenum(cur, total) { return ""; } // 페이지 표시 제거 (사용자 요청)
   function brandfoot(meta) { return '<div class="brandfoot"><span class="mush">🍄</span> ' + esc(meta["교과목"] || "메이플스토리 월드 코딩 교실") + '</div>'; }
   function eyebrow(label) { return '<span class="eyebrow anim"><span class="dot"></span>' + esc(label) + '</span>'; }
@@ -229,6 +234,82 @@
       brandfoot(meta);
   }
 
+  /* ---------- 비교/대조 (label: 내용 묶음 2~4개) ---------- */
+  function splitItems(body) {
+    return body.split(/\s*[·/、,]\s*|\s{2,}/).map(function (x) { return x.trim(); }).filter(Boolean);
+  }
+  function footOf(lines) {
+    var f = lines.filter(function (l) { var t = tagOf(l.text).tag; return t === "foot" || t === "cap"; })
+      .map(function (l) { return tagOf(l.text).text; })[0];
+    return f || "";
+  }
+  function labeledGroups(lines) {
+    var groups = [], others = 0;
+    lines.forEach(function (l) {
+      if (l.depth > 0) return;
+      var info = tagOf(l.text);
+      if (info.tag) { if (info.tag === "foot" || info.tag === "cap") return; others++; return; }
+      var m = info.text.match(/^([^:：]{1,16})[:：]\s*(.+)$/);
+      if (m && !/https?/i.test(m[1])) groups.push({ label: m[1].trim(), body: m[2].trim() });
+      else others++;
+    });
+    if (groups.length >= 2 && groups.length <= 4 && others <= 1 &&
+        groups.some(function (g) { return g.body.length > 2; })) return groups;
+    return null;
+  }
+  function slideCompare(s, num, total, groups) {
+    var foot = footOf(s.lines);
+    var cols = groups.map(function (g, i) {
+      var c = "var(" + POINTS[i % 4] + ")";
+      var items = splitItems(g.body);
+      var body = items.length > 1
+        ? '<ul class="cmp-list">' + items.map(function (it) { return '<li>' + inlineMd(it) + '</li>'; }).join("") + '</ul>'
+        : '<p class="cmp-one">' + inlineMd(g.body) + '</p>';
+      return '<div class="cmp-col pop" style="--c:' + c + '"><div class="cmp-head">' + inlineMd(g.label) + '</div>' + body + '</div>';
+    }).join("");
+    return logo() +
+      '<div class="frame">' +
+        eyebrow(pad2(s.num)) +
+        '<h2 class="slidetitle">' + inlineMd(s.title) + '</h2>' +
+        '<div class="cmp-grid cmp-' + groups.length + '">' + cols + '</div>' +
+        (foot ? '<p class="cmp-foot anim3">' + inlineMd(foot) + '</p>' : "") +
+        keybar(s.key) +
+      '</div>' +
+      pagenum(num, total);
+  }
+
+  /* ---------- 단계/절차 (번호 목록 3+개, → 없는 경우) ---------- */
+  function stepSequence(lines) {
+    var steps = [], ok = true;
+    lines.forEach(function (l) {
+      if (l.depth > 0) return;
+      var info = tagOf(l.text);
+      if (info.tag) { if (info.tag === "foot" || info.tag === "cap") return; ok = false; return; }
+      if (isFlow(info.text)) { ok = false; return; }
+      if (isStep(info.text)) steps.push(info.text.replace(/^\s*(\d+[.)]|[①②③④⑤⑥⑦⑧⑨])\s*/, ""));
+      else ok = false;
+    });
+    return (ok && steps.length >= 3) ? steps : null;
+  }
+  function slideSteps(s, num, total, key, steps) {
+    var hasVisual = !!s.visual;
+    var list = '<div class="steps-list">' + steps.map(function (t, i) {
+      var c = "var(" + POINTS[i % 4] + ")";
+      return '<div class="step-row pop"><span class="step-num" style="background:' + c + '">' + (i + 1) + '</span><span class="step-txt">' + inlineMd(t) + '</span></div>';
+    }).join("") + '</div>';
+    return logo() +
+      '<div class="frame">' +
+        eyebrow(pad2(s.num)) +
+        '<h2 class="slidetitle">' + inlineMd(s.title) + '</h2>' +
+        '<div class="cols' + (hasVisual ? "" : " solo") + '">' +
+          '<div class="col-main">' + list + '</div>' +
+          (hasVisual ? '<div class="col-side pop">' + imgslot(key + "-img-" + s.num, s.visual, "imgslot", "", true) + '</div>' : "") +
+        '</div>' +
+        keybar(s.key) +
+      '</div>' +
+      pagenum(num, total);
+  }
+
   function renderSlide(s, meta, num, total, key, accentIdx) {
     var inner, accent = "var(--mush)";
     switch (s.kind) {
@@ -239,9 +320,13 @@
       default:
         accent = "var(" + POINTS[accentIdx % 4] + ")";
         var st = statementInfo(s.lines);
+        var groups = labeledGroups(s.lines);
         var cards = collectCards(s.lines);
+        var steps = stepSequence(s.lines);
         if (st && s.lines.length <= 3) inner = slideStatement(s, num, total, st);
-        else if (cards) inner = slideCards(s, num, total, cards);
+        else if (groups) inner = slideCompare(s, num, total, groups);       // 비교·대조 / 용어 풀이
+        else if (cards) inner = slideCards(s, num, total, cards);            // 카드 (제목+설명)
+        else if (steps) inner = slideSteps(s, num, total, key, steps);       // 단계·절차
         else inner = slideContent(s, num, total, key, { flip: accentIdx % 2 === 1, panel: accentIdx % 3 === 2 });
     }
     return '<section class="slide kind-' + s.kind + '" data-screen-label="' + esc(pad2(s.num)) + ' ' + esc(s.title) + '" style="--accent:' + accent + '">' + inner + '</section>';
@@ -329,6 +414,7 @@
 
   window.KBuilder = window.KBuilder || {};
   window.KBuilder.buildDeck = buildDeck;
+  window.KBuilder.logoHTML = logo; // 로고 상태 기반 <img> (layouts/editor 공용)
   /* 내보낸 HTML의 슬라이드를 그대로 장착해 이어서 편집 */
   window.KBuilder.mountDeckHtml = function (slidesHtml, mount, meta) {
     var parsed = { meta: meta || {}, slides: [] };

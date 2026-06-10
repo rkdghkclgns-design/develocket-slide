@@ -163,8 +163,10 @@
       ? { bg: "0E1628", phFill: "101A2E", phText: "6D7C97", phLine: "33415E", dark: true }
       : { bg: "FFF3E0", phFill: "F3EEE0", phText: "9A8F78", phLine: "FFFFFF", dark: false });
 
-    Promise.all([fetchDataUrl("assets/logo-worlds.png"), fetchDataUrl("assets/mushroom.png")]).then(function (imgs) {
-      var logo = imgs[0], mush = imgs[1];
+    var Lg = window.KBuilder.logo || {};
+    var logoData = (Lg.shown && Lg.src) ? Lg.src : null;
+    Promise.all([fetchDataUrl("assets/mushroom.png")]).then(function (imgs) {
+      var mush = imgs[0];
       var pptx = new PptxGenJS();
       pptx.defineLayout({ name: "MW", width: IW, height: IH });
       pptx.layout = "MW";
@@ -178,8 +180,8 @@
         var accent = C.mush;
         if (s.kind === "content" || s.kind === "activity" || s.kind === "toc") { accent = C[POINTS[accentIdx % 4]]; accentIdx++; }
 
-        // 로고 (다크 테마에서는 숨김)
-        if (!THEME.dark) slide.addImage({ data: logo, x: X(1920 - 64 - 248), y: Y(46), w: X(248), h: X(248) / 2 });
+        // 사용자 로고 (표시 설정 시에만, 비율 유지)
+        if (logoData) slide.addImage({ data: logoData, x: X(1920 - 64 - 300), y: Y(44), w: X(300), h: Y(132), sizing: { type: "contain", w: X(300), h: Y(132) } });
 
         if (s.kind === "cover") coverSlide(slide, s, meta, mush, key);
         else if (s.kind === "closing") closingSlide(slide, s, meta, mush, key);
