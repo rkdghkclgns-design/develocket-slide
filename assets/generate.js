@@ -1,5 +1,6 @@
 /* generate.js — 소스 원고 MD → 교수안.md + 슬라이드 편성안.md (AI 생성)
-   window.claude.complete (haiku, 출력 1024토큰)를 섹션 단위로 호출해 조립한다.
+   AI 백엔드(Supabase 엣지 펑션 slide-gemini → Google Gemini, 폴백: window.claude.complete)를
+   섹션 단위로 호출해 조립한다. 백엔드 설정(엔드포인트·모델)은 assets/ai-config.js 참고.
    window.KBuilder.generateFromSource(sourceMd, onProgress) → Promise<{docMd, deckMd}> */
 (function () {
   "use strict";
@@ -60,10 +61,44 @@
     return m ? parseInt(m[1], 10) : 0;
   }
 
-  /* ---------- Claude 호출 (재시도 포함) ---------- */
+  /* ---------- AI 호출 (Supabase 엣지 펑션 우선 · Claude 폴백 · 재시도 포함) ---------- */
+  function backend() {
+    var ai = window.KBuilder && window.KBuilder.AI;
+    if (ai && ai.endpoint) return "edge";
+    if (window.claude && typeof window.claude.complete === "function") return "claude";
+    return null;
+  }
+
+  /* 엣지 펑션 호출: POST {prompt, model} → {text} (원시 Gemini 응답도 허용) */
+  function callEdge(prompt) {
+    var ai = window.KBuilder.AI;
+    return fetch(ai.endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: prompt, model: ai.model })
+    }).then(function (res) {
+      return res.text().then(function (raw) {
+        var data = {};
+        try { data = raw ? JSON.parse(raw) : {}; } catch (e) { data = {}; }
+        if (!res.ok || data.error) {
+          throw new Error(data.error || ("AI 서버 오류 (HTTP " + res.status + ")"));
+        }
+        var text = data.text;
+        if (text == null && data.candidates && data.candidates[0] && data.candidates[0].content) {
+          text = (data.candidates[0].content.parts || []).map(function (p) { return p.text || ""; }).join("");
+        }
+        if (!text) throw new Error("AI 응답이 비어 있습니다.");
+        return text;
+      });
+    });
+  }
+
   function call(prompt, tries) {
     tries = tries == null ? 2 : tries;
-    return window.claude.complete(prompt).catch(function (e) {
+    var kind = backend();
+    if (!kind) return Promise.reject(new Error("AI 백엔드가 설정되지 않았습니다. assets/ai-config.js를 확인하세요."));
+    var p = kind === "edge" ? callEdge(prompt) : window.claude.complete(prompt);
+    return p.catch(function (e) {
       if (tries > 0) {
         return new Promise(function (res) { setTimeout(res, 1200); })
           .then(function () { return call(prompt, tries - 1); });

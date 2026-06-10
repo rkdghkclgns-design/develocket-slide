@@ -12,7 +12,7 @@
 2. **✨ 샘플로 미리보기**를 누르면 내장 샘플이 바로 들어가 결과를 확인할 수 있습니다.
 3. 직접 만들려면 `samples/` 의 두 MD를 끌어다 놓거나 형식에 맞춰 작성합니다.
 
-> AI 생성 모드(소스 원고 → 교수안·편성안 자동 생성)는 `window.claude.complete` API가 있는 환경(Claude 미리보기 등)에서만 동작합니다. 일반 브라우저에서는 **완성된 MD 업로드** 모드를 사용하세요.
+> ✨ AI 생성 모드(소스 원고 → 교수안·편성안 자동 생성)는 **Supabase 엣지 펑션(slide-gemini)** 을 통해 **Google Gemini 2.5 Pro**로 동작합니다. 배포된 GitHub Pages에서 바로 사용할 수 있습니다. (Google API 키는 엣지 펑션 시크릿으로만 보관되어 클라이언트에 노출되지 않습니다.) 자세한 구조는 아래 [AI 생성 백엔드](#ai-생성-백엔드-소스-원고--교안) 참고.
 
 ---
 
@@ -99,7 +99,8 @@
 │  ├─ editor.js               # 슬라이드 편집(선택/드래그/서식)
 │  ├─ layouts.js              # 레이아웃 갤러리(11종)
 │  ├─ image-slot.js           # <image-slot> 커스텀 엘리먼트
-│  ├─ generate.js             # 소스 원고 → AI 생성
+│  ├─ ai-config.js            # AI 백엔드(엣지 펑션) 엔드포인트·모델 설정
+│  ├─ generate.js             # 소스 원고 → AI 생성 (엣지 펑션 호출, claude 폴백)
 │  ├─ export.js               # HTML / PPTX 내보내기
 │  ├─ tutorial.js             # 첫 방문 튜토리얼 + 도움말
 │  ├─ sample-data.js          # 내장 샘플 MD
@@ -113,6 +114,29 @@
 
 ---
 
+## AI 생성 백엔드 (소스 원고 → 교안)
+
+✨ 소스 원고로 생성 모드는 **Supabase 엣지 펑션**을 거쳐 **Google Gemini 2.5 Pro**를 호출합니다.
+
+```
+브라우저 (generate.js)
+   │  POST { prompt, model }
+   ▼
+Supabase Edge Function · slide-gemini      ← GEMINI_API_KEY (서버 시크릿)
+   │  v1beta/models/gemini-2.5-pro:generateContent
+   ▼
+Google Gemini API  →  { text }
+```
+
+- **키 보안** — `GEMINI_API_KEY`는 엣지 펑션 시크릿(서버)에만 존재하며 클라이언트 코드·네트워크에 노출되지 않습니다.
+- **접근 제어** — 엣지 펑션은 오리진 허용목록(`https://rkdghkclgns-design.github.io` 등)만 허용합니다(`verify_jwt=false` + origin allowlist).
+- **응답 안정화** — 2.5 Pro는 사고(thinking) 토큰이 출력 예산에 포함되므로, 엣지 펑션이 `thinkingBudget`을 제한하고 출력 예산을 넉넉히(8192) 잡아 빈 응답(`finishReason=MAX_TOKENS`)을 방지합니다.
+- **폴백** — `window.claude.complete`가 있는 환경(Claude 미리보기)에서는 자동으로 그쪽으로 폴백합니다.
+- **설정 변경** — 엔드포인트·모델은 `assets/ai-config.js` 한 곳에서 바꿀 수 있습니다.
+- **호출 규약** — `POST { prompt: string, model?, temperature?, maxOutputTokens?, thinkingBudget? }` → `200 { text }` / 오류 시 `{ error }`.
+
+> 엣지 펑션 소스는 디벨로켓 Supabase 프로젝트(`NexGen ERP`, ref `pkwbqbxuujpcvndpacsc`)의 `slide-gemini` 함수에 배포되어 있습니다.
+
 ## 테스트
 
 브라우저 없이 핵심 파이프라인(파싱 → 종류 추론 → 렌더)을 검증합니다.
@@ -121,7 +145,7 @@
 node tests/pipeline.smoke.js
 ```
 
-`parser.js` · `render-doc.js` · `render-deck.js` · `sample-data.js`를 `vm` 샌드박스(+최소 DOM 셰임)에 로드해 내장 샘플과 임의의 동일 구조 MD를 변환하고, 슬라이드 18장·표·콜아웃·표지 렌더까지 단언합니다.
+`parser.js` · `render-doc.js` · `render-deck.js` · `sample-data.js` · `ai-config.js` · `generate.js`를 `vm` 샌드박스(+최소 DOM 셰임)에 로드해 내장 샘플과 임의의 동일 구조 MD를 변환하고, 슬라이드 18장·표·콜아웃·표지 렌더, AI 백엔드 배선(엔드포인트·모델·`generateFromSource`)까지 총 46건을 단언합니다.
 
 ---
 

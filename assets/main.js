@@ -190,7 +190,8 @@
 
   function runGenerate() {
     if (!state.sourceText) return;
-    if (!(window.claude && window.claude.complete)) {
+    var aiReady = (K.AI && K.AI.endpoint) || (window.claude && window.claude.complete);
+    if (!aiReady) {
       alert("AI 생성 기능을 사용할 수 없는 환경입니다. 완성된 MD 업로드 모드를 이용해 주세요.");
       return;
     }
