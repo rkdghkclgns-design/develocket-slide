@@ -123,6 +123,14 @@ image-slot { display: block; }
 .cover-course { display: inline-flex; align-items: center; gap: 12px; font-size: var(--type-eyebrow); font-weight: 800; color: var(--mush); background: var(--paper); padding: 12px 26px; border-radius: 999px; box-shadow: 0 6px 18px rgba(43,34,64,.08); margin-bottom: 30px; }
 .cover-title { font-family: var(--font-display); font-size: var(--type-mega); line-height: 1.0; margin: 0; color: var(--ink); letter-spacing: -.02em; }
 .cover-sub { font-size: var(--type-lead); color: var(--ink-soft); margin: 30px 0 0; font-weight: 600; }
+/* 표지 정렬: 2단(좌:제목 / 우:이미지)은 그리드 유지, solo(이미지 없음)는 정중앙 정렬.
+   (.deck-stage-inner .frame 가 flex로 덮어쓰던 문제를 더 높은 명시도로 교정) */
+.deck-stage-inner .frame.cover { display: grid; grid-template-columns: 1fr 600px; gap: 70px; align-items: center; }
+.deck-stage-inner .frame.cover.solo {
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  text-align: center; grid-template-columns: none;
+}
+.frame.cover.solo .cover-left { align-self: center; text-align: center; max-width: 1500px; }
 
 /* ---------- 목차(카드) ---------- */
 .toc-grid { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 26px; align-content: center; margin-top: 12px; }
@@ -277,6 +285,12 @@ image-slot { display: block; }
 .lp-actions { display: flex; gap: 6px; }
 .lp-actions button { flex: 1; border: 1px solid #ffd9c2; background: #fff3ec; color: #e8590c; font-weight: 700; font-size: 12px; border-radius: 8px; padding: 6px 4px; cursor: pointer; }
 .lp-actions button:hover { background: #ffe6d5; }
+/* 사용자 정의 레이아웃 저장/삭제 */
+.lp-save { margin-left: auto; border: 1px solid #cdebd6; background: #eafaf0; color: #2f9e5e; font-weight: 800; font-size: 12.5px; border-radius: 9px; padding: 8px 12px; cursor: pointer; }
+.lp-save:hover { background: #d8f4e3; }
+.lp-grid .lp-sep { grid-column: 1 / -1; font-weight: 800; font-size: 13px; color: #2b2240; border-top: 1px dashed #e7e2d6; padding-top: 12px; margin-top: 4px; }
+.lp-name .lp-del { border: none; background: transparent; cursor: pointer; font-size: 13px; padding: 0 2px; float: right; opacity: .7; }
+.lp-name .lp-del:hover { opacity: 1; }
 /* 레이아웃 갤러리 미니 미리보기 (실제 슬라이드를 1920 기준으로 축소) */
 .lp-preview { width: 100%; overflow: hidden; border-radius: 10px; border: 1px solid #e7e2d6; background: #f3eee0; margin-bottom: 10px; position: relative; }
 .lp-preview .lp-stage { transform-origin: top left; }

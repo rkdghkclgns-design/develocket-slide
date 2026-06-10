@@ -678,8 +678,9 @@ body {
   body.print-deck .deck-stage-inner { position: static !important; width: auto !important; height: auto !important; }
   /* 슬라이드는 relative 유지 — static으로 두면 내부 .frame(absolute)이
      각 슬라이드를 벗어나 페이지 좌상단으로 겹쳐 쌓인다(겹침 버그). */
+  /* 16:9 페이지(297x167mm)에 슬라이드가 꽉 차도록 스케일 */
   body.print-deck .slide {
-    position: relative !important; display: block !important; zoom: .578;
+    position: relative !important; display: block !important; zoom: .582;
     page-break-after: always; break-after: page; break-inside: avoid;
     margin: 0 auto; box-shadow: none; border-radius: 0; overflow: hidden;
   }

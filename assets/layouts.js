@@ -79,24 +79,82 @@
     } }
   ];
 
-  var panel = null;
+  /* ---------- 사용자 정의 레이아웃 (현재 슬라이드 저장 → 재사용) ---------- */
+  var CUSTOM_KEY = "kb-custom-layouts";
+  function esc(s) { return window.KBuilder.escapeHtml ? window.KBuilder.escapeHtml(s) : String(s == null ? "" : s); }
+  function loadCustom() { try { return JSON.parse(localStorage.getItem(CUSTOM_KEY) || "[]"); } catch (e) { return []; } }
+  function saveCustom(arr) { try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(arr)); return true; } catch (e) { alert("저장 공간이 부족해 레이아웃을 저장하지 못했어요. (이미지가 큰 슬라이드는 용량을 많이 차지합니다)"); return false; } }
+  function captureCurrent() {
+    var ctrl = window.KBuilder.lastDeck && window.KBuilder.lastDeck.ctrl; if (!ctrl) return null;
+    var cur = ctrl.slidesNow()[ctrl.index]; if (!cur) return null;
+    var clone = cur.cloneNode(true);
+    Array.prototype.slice.call(clone.querySelectorAll(".rs-handle,.marquee,.ph-spacer")).forEach(function (x) { x.remove(); });
+    Array.prototype.slice.call(clone.querySelectorAll(".sel-elem")).forEach(function (x) { x.classList.remove("sel-elem"); });
+    Array.prototype.slice.call(clone.querySelectorAll("[contenteditable]")).forEach(function (x) { x.removeAttribute("contenteditable"); });
+    clone.removeAttribute("data-deck-active"); clone.style.display = "";
+    // image-slot 의 현재 이미지(src)를 속성으로 보존 (적용 시 재현)
+    var liveSlots = cur.querySelectorAll("image-slot"), cloneSlots = clone.querySelectorAll("image-slot");
+    Array.prototype.slice.call(liveSlots).forEach(function (s, k) {
+      var src = (s._img && /^data:/.test(s._img.src)) ? s._img.src : (s.getAttribute("src") || "");
+      if (cloneSlots[k]) { if (src) cloneSlots[k].setAttribute("src", src); }
+    });
+    return clone.outerHTML;
+  }
+  function addCustomFromCurrent() {
+    var html = captureCurrent();
+    if (!html) { alert("먼저 슬라이드를 선택해 주세요."); return; }
+    var name = prompt("레이아웃 이름을 입력하세요", "내 레이아웃 " + (loadCustom().length + 1));
+    if (name == null) return;
+    var arr = loadCustom();
+    arr.push({ id: "custom-" + Date.now(), name: (name.trim() || "내 레이아웃"), html: html });
+    if (saveCustom(arr)) { renderGrid(); requestAnimationFrame(sizePreviews); }
+  }
+  function deleteCustom(id) {
+    if (!confirm("이 레이아웃을 삭제할까요?")) return;
+    saveCustom(loadCustom().filter(function (c) { return c.id !== id; }));
+    renderGrid(); requestAnimationFrame(sizePreviews);
+  }
+  function getLayout(id) {
+    var b = LAYOUTS.find(function (x) { return x.id === id; });
+    if (b) return b;
+    var c = loadCustom().find(function (x) { return x.id === id; });
+    return c ? { id: c.id, name: c.name, make: function () { return c.html; } } : null;
+  }
+
+  /* ---------- 패널 ---------- */
+  var panel = null, gridEl = null;
+  function itemHTML(L, custom) {
+    return '<div class="lp-item">' +
+      '<div class="lp-preview"><div class="lp-stage deck-stage-inner">' + L.make() + '</div></div>' +
+      '<div class="lp-name">' + esc(L.name) + (custom ? ' <button class="lp-del" data-del="' + L.id + '" title="삭제">🗑</button>' : '') + '</div>' +
+      '<div class="lp-actions"><button data-act="add" data-id="' + L.id + '">＋ 새 슬라이드</button>' +
+      '<button data-act="replace" data-id="' + L.id + '">↺ 현재 교체</button></div></div>';
+  }
+  function renderGrid() {
+    if (!gridEl) return;
+    var custom = loadCustom();
+    var html = LAYOUTS.map(function (L) { return itemHTML(L, false); }).join("");
+    if (custom.length) {
+      html += '<div class="lp-sep">내 레이아웃</div>';
+      html += custom.map(function (c) { return itemHTML({ id: c.id, name: c.name, make: function () { return c.html; } }, true); }).join("");
+    }
+    gridEl.innerHTML = html;
+  }
   function ensurePanel() {
     if (panel) return panel;
     panel = document.createElement("div");
     panel.className = "layout-panel";
-    var grid = LAYOUTS.map(function (L) {
-      return '<div class="lp-item">' +
-        '<div class="lp-preview"><div class="lp-stage deck-stage-inner">' + L.make() + '</div></div>' +
-        '<div class="lp-name">' + L.name + '</div>' +
-        '<div class="lp-actions"><button data-act="add" data-id="' + L.id + '">＋ 새 슬라이드</button>' +
-        '<button data-act="replace" data-id="' + L.id + '">↺ 현재 교체</button></div></div>';
-    }).join("");
     panel.innerHTML = '<div class="lp-card"><div class="lp-head"><b>레이아웃 선택</b>' +
-      '<span class="lp-hint">현재 테마(메이플/다크)에 맞춰 적용됩니다</span>' +
-      '<button class="lp-close" title="닫기">✕</button></div><div class="lp-grid">' + grid + '</div></div>';
+      '<span class="lp-hint">현재 테마에 맞춰 적용됩니다</span>' +
+      '<button class="lp-save" id="lp-save-cur" title="현재 슬라이드를 내 레이아웃으로 저장">＋ 현재 슬라이드를 레이아웃으로 추가</button>' +
+      '<button class="lp-close" title="닫기">✕</button></div><div class="lp-grid"></div></div>';
     document.querySelector(".deck-main").appendChild(panel);
+    gridEl = panel.querySelector(".lp-grid");
+    renderGrid();
     panel.addEventListener("click", function (e) {
       if (e.target === panel || e.target.closest(".lp-close")) { panel.classList.remove("open"); return; }
+      if (e.target.closest("#lp-save-cur")) { addCustomFromCurrent(); return; }
+      var del = e.target.closest("[data-del]"); if (del) { e.stopPropagation(); deleteCustom(del.getAttribute("data-del")); return; }
       var b = e.target.closest("[data-act]"); if (!b) return;
       applyLayout(b.dataset.id, b.dataset.act);
       panel.classList.remove("open");
@@ -104,11 +162,12 @@
     return panel;
   }
   function applyLayout(id, mode) {
-    var L = LAYOUTS.find(function (x) { return x.id === id; }); if (!L) return;
+    var L = getLayout(id); if (!L) return;
     var ctrl = window.KBuilder.lastDeck && window.KBuilder.lastDeck.ctrl; if (!ctrl) return;
     var slides = ctrl.slidesNow(); var i = ctrl.index;
     var tmp = document.createElement("div"); tmp.innerHTML = L.make();
-    var node = tmp.firstElementChild;
+    var node = tmp.firstElementChild; if (!node) return;
+    Array.prototype.slice.call(node.querySelectorAll("image-slot")).forEach(function (s) { s.id = nid(); }); // id 중복 방지
     if (mode === "replace") {
       if (!confirm("현재 슬라이드 내용을 이 레이아웃으로 교체할까요?")) return;
       slides[i].parentNode.replaceChild(node, slides[i]);
@@ -134,6 +193,6 @@
   var btn = document.getElementById("btn-layout");
   if (btn) btn.addEventListener("click", function () {
     var p = ensurePanel(); p.classList.toggle("open");
-    if (p.classList.contains("open")) requestAnimationFrame(sizePreviews);
+    if (p.classList.contains("open")) { renderGrid(); requestAnimationFrame(sizePreviews); }
   });
 })();
