@@ -10,6 +10,7 @@
   var savedRange = null;
   var editMode = false;
   var textEl = null;
+  var undoStack = [];        // 구조 변경(교체/추가/삭제/복제/요소삭제·붙여넣기) 스냅샷
 
   // 내부 객체(.step, .chip, .toc-card, .ct-card 등)도 개별 선택·이동·크기조절 가능.
   // closest()가 가장 안쪽 selectable을 잡으므로 step/chip을 먼저 두면 그룹이 아닌 개별 칩이 선택된다.
@@ -237,7 +238,8 @@
     var ae = document.activeElement;
     var typing = (e.target && e.target.isContentEditable) || (ae && ae.isContentEditable);
     var k = e.key.toLowerCase();
-    if (typing) { if (e.key === "Escape") stopTextEdit(); return; }
+    if (typing) { if (e.key === "Escape") stopTextEdit(); return; }   // 텍스트 편집 중엔 브라우저 기본 실행취소
+    if ((e.ctrlKey || e.metaKey) && k === "z" && !e.shiftKey) { if (undo()) e.preventDefault(); return; }
     if ((e.ctrlKey || e.metaKey) && k === "c" && selected.length) { copySel(); e.preventDefault(); }
     else if ((e.ctrlKey || e.metaKey) && k === "x" && selected.length) { copySel(); removeSel(); e.preventDefault(); }
     else if ((e.ctrlKey || e.metaKey) && k === "v") {
@@ -276,6 +278,7 @@
   function insertImage(src) {
     var slide = stage.querySelector(".slide[data-deck-active]");
     var frame = slide && (slide.querySelector(".frame") || slide); if (!frame) return;
+    snapshot();
     var wrap = document.createElement("div");
     wrap.className = "pasted-img";
     wrap.dataset.abs = "1";
@@ -296,12 +299,15 @@
     clip = selected.map(function (el) { var c = el.cloneNode(true); c.classList.remove("sel-elem"); removeHandles(c); return c; });
   }
   function removeSel() {
+    if (!selected.length) return;
+    snapshot();
     selected.slice().forEach(function (el) { if (el._ph) el._ph.remove(); el.remove(); });
     selected = [];
   }
   function pasteClip() {
     var slide = stage.querySelector(".slide[data-deck-active]");
     var frame = slide && (slide.querySelector(".frame") || slide); if (!frame) return;
+    snapshot();
     var added = [];
     clip.forEach(function (node) {
       var n = node.cloneNode(true);
@@ -384,9 +390,35 @@
     s.removeAllRanges();
   }
 
+  /* ---------------- 실행취소 (구조 변경 스냅샷) ---------------- */
+  // 구조 변경 직전에 스테이지 전체를 저장. Ctrl+Z 로 직전 상태 복원.
+  function snapshot() {
+    if (!stage || !ctrl) return;
+    var clone = stage.cloneNode(true);
+    // 슬롯에 올린 이미지(src) 보존, 편집 잔여물 제거
+    Array.prototype.slice.call(clone.querySelectorAll("image-slot")).forEach(function (s) {
+      var src = slotSrc(s.id); if (src) s.setAttribute("src", src);
+    });
+    Array.prototype.slice.call(clone.querySelectorAll(".rs-handle,.marquee")).forEach(function (x) { x.remove(); });
+    Array.prototype.slice.call(clone.querySelectorAll(".sel-elem")).forEach(function (x) { x.classList.remove("sel-elem"); });
+    undoStack.push({ html: clone.innerHTML, index: ctrl.index });
+    if (undoStack.length > 30) undoStack.shift();
+  }
+  function undo() {
+    if (!undoStack.length) return false;
+    var snap = undoStack.pop();
+    deselect();
+    stage.innerHTML = snap.html;
+    buildRail();
+    var n = ctrl.slidesNow().length;
+    ctrl.sync(Math.max(0, Math.min(snap.index, n - 1)));
+    return true;
+  }
+
   /* ---------------- 슬라이드 복제/삭제/추가 ---------------- */
   function dupSlide(i) {
     var slides = ctrl.slidesNow(); var s = slides[i]; if (!s) return;
+    snapshot();
     var clone = s.cloneNode(true);
     clone.querySelectorAll(".sel-elem").forEach(function (x) { x.classList.remove("sel-elem"); });
     clone.querySelectorAll(".rs-handle").forEach(function (x) { x.remove(); });
@@ -396,11 +428,13 @@
   }
   function delSlide(i) {
     var slides = ctrl.slidesNow(); if (slides.length <= 1) { alert("마지막 슬라이드는 삭제할 수 없어요."); return; }
+    snapshot();
     slides[i].remove();
     buildRail(); ctrl.sync(Math.min(i, ctrl.slidesNow().length - 1));
   }
   function addSlide() {
     var i = ctrl.index; var slides = ctrl.slidesNow();
+    snapshot();
     var sec = document.createElement("section");
     sec.className = "slide kind-content"; sec.setAttribute("data-screen-label", "새 슬라이드");
     sec.setAttribute("style", "--accent:var(--sky)");
@@ -459,6 +493,7 @@
     dupSlide: function () { dupSlide(ctrl.index); },
     delSlide: function () { delSlide(ctrl.index); },
     addSlide: addSlide,
+    snapshot: snapshot, undo: undo,   // 레이아웃 교체 등 외부 구조변경 전 호출 / Ctrl+Z
     isEditing: function () { return editMode; }
   };
 })();

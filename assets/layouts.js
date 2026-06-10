@@ -161,20 +161,98 @@
     });
     return panel;
   }
+  /* ---------- 현재 슬라이드 내용 → 새 레이아웃으로 이전(migration) ---------- */
+  function slotSrc(id) {
+    var sl = document.getElementById(id); if (!sl) return "";
+    return (sl._img && sl._img.src && sl._img.src.indexOf("data:") === 0) ? sl._img.src : (sl.getAttribute("src") || "");
+  }
+  function txt(el) { return el ? el.textContent.replace(/\s+/g, " ").trim() : ""; }
+  function firstTxt(slide, sels) { for (var j = 0; j < sels.length; j++) { var e = slide.querySelector(sels[j]); if (e && txt(e)) return txt(e); } return ""; }
+  function extractBundle(slide) {
+    var b = { title: "", sub: "", bullets: [], key: "", images: [] };
+    b.title = firstTxt(slide, [".cover-title", ".st-big", ".closing-title", ".slidetitle"]);
+    b.sub = firstTxt(slide, [".cover-sub", ".st-lead", ".closing-lead"]);
+    Array.prototype.slice.call(slide.querySelectorAll(".items li")).forEach(function (li) { var t = txt(li).replace(/^✓\s*/, ""); if (t) b.bullets.push(t); });
+    Array.prototype.slice.call(slide.querySelectorAll(".cmp-col")).forEach(function (col) {
+      var head = txt(col.querySelector(".cmp-head"));
+      var items = Array.prototype.slice.call(col.querySelectorAll(".cmp-list li")).map(txt).filter(Boolean);
+      var body = items.length ? items.join(", ") : txt(col.querySelector(".cmp-one"));
+      if (head) b.bullets.push(head + (body ? ": " + body : ""));
+    });
+    Array.prototype.slice.call(slide.querySelectorAll(".ct-card")).forEach(function (c) {
+      var t = txt(c.querySelector(".ct-t")), bd = txt(c.querySelector(".ct-b")); if (t) b.bullets.push(t + (bd ? ": " + bd : ""));
+    });
+    Array.prototype.slice.call(slide.querySelectorAll(".toc-card .txt")).forEach(function (e) { var t = txt(e); if (t) b.bullets.push(t); });
+    Array.prototype.slice.call(slide.querySelectorAll(".steps-list .step-txt")).forEach(function (e) { var t = txt(e); if (t) b.bullets.push(t); });
+    Array.prototype.slice.call(slide.querySelectorAll(".flow .step")).forEach(function (e) { var t = txt(e); if (t) b.bullets.push(t); });
+    Array.prototype.slice.call(slide.querySelectorAll(".chips .chip")).forEach(function (e) { var t = txt(e); if (t) b.bullets.push(t); });
+    Array.prototype.slice.call(slide.querySelectorAll(".tbl tbody tr")).forEach(function (tr) {
+      var cells = Array.prototype.slice.call(tr.querySelectorAll("td")).map(txt).filter(Boolean); if (cells.length) b.bullets.push(cells.join(": "));
+    });
+    var kb = slide.querySelector(".keybar"); if (kb) b.key = txt(kb).replace(/^핵심\s*/, "");
+    Array.prototype.slice.call(slide.querySelectorAll("image-slot")).forEach(function (s) { var src = slotSrc(s.id) || s.getAttribute("src") || ""; if (src) b.images.push(src); });
+    Array.prototype.slice.call(slide.querySelectorAll(".pasted-img img")).forEach(function (im) { if (im.src) b.images.push(im.src); });
+    return b;
+  }
+  function fillBody(node, bullets) {
+    if (!bullets.length) return false;
+    var P = ["--pink", "--sky", "--lime", "--orange"];
+    var ul = node.querySelector(".items");
+    if (ul) { ul.innerHTML = bullets.map(function (t) { return '<li><span class="chk">✓</span><span>' + esc(t) + '</span></li>'; }).join(""); return true; }
+    var grid = node.querySelector(".card-grid");
+    if (grid) {
+      grid.innerHTML = bullets.map(function (t, idx) { var p = t.split(/:\s*/); return '<div class="ct-card"><div class="ct-no" style="background:var(' + P[idx % 4] + ')">' + (idx + 1) + '</div><div class="ct-t">' + esc(p[0]) + '</div><p class="ct-b">' + esc(p.slice(1).join(": ")) + '</p></div>'; }).join(""); return true;
+    }
+    var toc = node.querySelector(".toc-grid");
+    if (toc) { toc.innerHTML = bullets.map(function (t, idx) { return '<div class="toc-card pop"><div class="no" style="background:var(' + P[idx % 4] + ')">' + (idx + 1) + '</div><div class="txt">' + esc(t) + '</div></div>'; }).join(""); return true; }
+    var cmp = node.querySelector(".cmp-grid");
+    if (cmp) {
+      cmp.className = "cmp-grid cmp-" + Math.min(4, Math.max(2, bullets.length));
+      cmp.innerHTML = bullets.slice(0, 4).map(function (t, idx) {
+        var p = t.split(/:\s*/), rest = p.slice(1).join(": "); var items = rest ? rest.split(/,\s*/) : [];
+        var body = items.length ? '<ul class="cmp-list">' + items.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join("") + '</ul>' : '<p class="cmp-one">' + esc(rest) + '</p>';
+        return '<div class="cmp-col pop" style="--c:var(' + P[idx % 4] + ')"><div class="cmp-head">' + esc(p[0]) + '</div>' + body + '</div>';
+      }).join(""); return true;
+    }
+    var steps = node.querySelector(".steps-list");
+    if (steps) { steps.innerHTML = bullets.map(function (t, idx) { return '<div class="step-row pop"><span class="step-num" style="background:var(' + P[idx % 4] + ')">' + (idx + 1) + '</span><span class="step-txt">' + esc(t) + '</span></div>'; }).join(""); return true; }
+    var tbody = node.querySelector(".tbl tbody");
+    if (tbody) { tbody.innerHTML = bullets.map(function (t) { var c = t.split(/[:,]\s*/); return '<tr>' + [0, 1, 2].map(function (ci) { return '<td>' + esc(c[ci] || "") + '</td>'; }).join("") + '</tr>'; }).join(""); return true; }
+    return false;
+  }
+  function migrateContent(oldSlide, node) {
+    var b = extractBundle(oldSlide);
+    var nt = node.querySelector(".cover-title, .st-big, .closing-title, .slidetitle");
+    if (nt && b.title) nt.textContent = b.title;
+    var lead = node.querySelector(".cover-sub, .st-lead, .closing-lead");
+    if (b.sub) { if (lead) lead.textContent = b.sub; else b.bullets.unshift(b.sub); }
+    var filled = fillBody(node, b.bullets);
+    if (!filled && b.bullets.length && lead && !txt(lead)) lead.textContent = b.bullets.join(" · ");
+    var nk = node.querySelector(".keybar span:last-child");
+    if (nk && b.key) nk.textContent = b.key;
+    else if (b.key && !node.querySelector(".keybar")) {
+      var fr = node.querySelector(".frame");
+      if (fr) { var kb = document.createElement("div"); kb.className = "keybar anim3"; kb.innerHTML = '<span class="klab">핵심</span><span>' + esc(b.key) + '</span>'; fr.appendChild(kb); }
+    }
+    Array.prototype.slice.call(node.querySelectorAll("image-slot")).forEach(function (s, idx) { if (b.images[idx]) s.setAttribute("src", b.images[idx]); });
+  }
+
   function applyLayout(id, mode) {
     var L = getLayout(id); if (!L) return;
     var ctrl = window.KBuilder.lastDeck && window.KBuilder.lastDeck.ctrl; if (!ctrl) return;
+    var ed = window.KBuilder.editor;
     var slides = ctrl.slidesNow(); var i = ctrl.index;
     var tmp = document.createElement("div"); tmp.innerHTML = L.make();
     var node = tmp.firstElementChild; if (!node) return;
     Array.prototype.slice.call(node.querySelectorAll("image-slot")).forEach(function (s) { s.id = nid(); }); // id 중복 방지
+    if (ed && ed.snapshot) ed.snapshot(); // Ctrl+Z 되돌리기용
     if (mode === "replace") {
-      if (!confirm("현재 슬라이드 내용을 이 레이아웃으로 교체할까요?")) return;
+      migrateContent(slides[i], node);   // 기존 작성 내용을 새 레이아웃으로 이전 (삭제 대신 적용)
       slides[i].parentNode.replaceChild(node, slides[i]);
-      window.KBuilder.editor.buildRail(); ctrl.sync(i);
+      ed.buildRail(); ctrl.sync(i);
     } else {
       slides[i].parentNode.insertBefore(node, slides[i].nextSibling);
-      window.KBuilder.editor.buildRail(); ctrl.goTo(i + 1);
+      ed.buildRail(); ctrl.goTo(i + 1);
     }
   }
   /* 각 레이아웃의 실제 렌더를 1920 기준으로 축소해 미니 미리보기로 보여준다 */
