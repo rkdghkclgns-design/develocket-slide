@@ -188,6 +188,25 @@
   var genStep = document.getElementById("gen-step");
   var genTotal = document.getElementById("gen-total");
 
+  /* ---------- AI 모델 선택 (K.AI.models 기반 · localStorage 기억) ---------- */
+  (function initModelPicker() {
+    var sel = document.getElementById("gen-model");
+    if (!sel || !K.AI || !Array.isArray(K.AI.models) || !K.AI.models.length) return;
+    var ids = K.AI.models.map(function (m) { return m.id; });
+    var saved = null;
+    try { saved = localStorage.getItem("kb-ai-model"); } catch (e) {}
+    if (saved && ids.indexOf(saved) !== -1) K.AI.model = saved;
+    else if (ids.indexOf(K.AI.model) === -1) K.AI.model = ids[0];
+    sel.innerHTML = K.AI.models.map(function (m) {
+      return '<option value="' + m.id + '">' + m.label + '</option>';
+    }).join("");
+    sel.value = K.AI.model;
+    sel.addEventListener("change", function () {
+      K.AI.model = sel.value;
+      try { localStorage.setItem("kb-ai-model", sel.value); } catch (e) {}
+    });
+  })();
+
   function runGenerate() {
     if (!state.sourceText) return;
     var aiReady = (K.AI && K.AI.endpoint) || (window.claude && window.claude.complete);

@@ -123,7 +123,7 @@
    │  POST { prompt, model }
    ▼
 Supabase Edge Function · slide-gemini      ← GEMINI_API_KEY (서버 시크릿)
-   │  v1beta/models/gemini-2.5-pro:generateContent
+   │  v1beta/models/{선택 모델}:generateContent
    ▼
 Google Gemini API  →  { text }
 ```
@@ -131,8 +131,9 @@ Google Gemini API  →  { text }
 - **키 보안** — `GEMINI_API_KEY`는 엣지 펑션 시크릿(서버)에만 존재하며 클라이언트 코드·네트워크에 노출되지 않습니다.
 - **접근 제어** — 엣지 펑션은 오리진 허용목록(`https://rkdghkclgns-design.github.io` 등)만 허용합니다(`verify_jwt=false` + origin allowlist).
 - **응답 안정화** — 2.5 Pro는 사고(thinking) 토큰이 출력 예산에 포함되므로, 엣지 펑션이 `thinkingBudget`을 제한하고 출력 예산을 넉넉히(8192) 잡아 빈 응답(`finishReason=MAX_TOKENS`)을 방지합니다.
+- **모델 선택** — 생성 화면에서 **Gemini 2.5 Pro(최고 품질) / Flash(빠른 균형) / Flash-Lite(가장 빠름)** 중 선택할 수 있고, 선택은 브라우저에 기억됩니다(localStorage). 모델 목록은 `assets/ai-config.js`의 `models` 배열에서 추가·삭제하면 셀렉터에 즉시 반영됩니다. ⚠️ Gemini **2.5 계열만** 사용하세요 — `gemini-2.0-flash` 등 구버전은 2026년 현재 지원 종료(404)이며, `thinkingConfig`는 2.5 계열에만 적용됩니다(엣지 펑션이 모델명으로 자동 분기).
 - **폴백** — `window.claude.complete`가 있는 환경(Claude 미리보기)에서는 자동으로 그쪽으로 폴백합니다.
-- **설정 변경** — 엔드포인트·모델은 `assets/ai-config.js` 한 곳에서 바꿀 수 있습니다.
+- **설정 변경** — 엔드포인트는 `assets/ai-config.js`에서 바꿀 수 있습니다.
 - **호출 규약** — `POST { prompt: string, model?, temperature?, maxOutputTokens?, thinkingBudget? }` → `200 { text }` / 오류 시 `{ error }`.
 
 > 엣지 펑션 소스는 디벨로켓 Supabase 프로젝트(`NexGen ERP`, ref `pkwbqbxuujpcvndpacsc`)의 `slide-gemini` 함수에 배포되어 있습니다.

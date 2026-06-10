@@ -9,5 +9,13 @@
 window.KBuilder = window.KBuilder || {};
 window.KBuilder.AI = {
   endpoint: "https://pkwbqbxuujpcvndpacsc.supabase.co/functions/v1/slide-gemini",
-  model: "gemini-2.5-pro"
+  // 현재 선택된 모델(기본값). UI 셀렉터/localStorage로 바뀐다.
+  model: "gemini-2.5-pro",
+  // 선택 가능한 모델 — 여기에 추가/삭제하면 셀렉터에 바로 반영된다.
+  // (Gemini 2.5 계열만 사용: 2.0-flash 등 구버전은 2026년 현재 지원 종료)
+  models: [
+    { id: "gemini-2.5-pro",        label: "Gemini 2.5 Pro · 최고 품질(느림)" },
+    { id: "gemini-2.5-flash",      label: "Gemini 2.5 Flash · 빠른 균형" },
+    { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite · 가장 빠름·저렴" }
+  ]
 };

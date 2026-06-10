@@ -180,6 +180,14 @@ body {
 .dz-empty { font-size: 12.5px; color: #aab2c0; }
 
 .intro-actions { display: flex; gap: 12px; justify-content: center; margin-top: 30px; }
+.gen-model-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 18px 0 2px; flex-wrap: wrap; }
+.gen-model-row label { font-weight: 700; color: var(--ink); font-size: 14px; }
+#gen-model {
+  font-family: var(--font-ui); font-weight: 600; font-size: 13.5px; color: var(--ink);
+  border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 9px 16px; cursor: pointer;
+}
+#gen-model:hover { border-color: var(--sky-deep); }
+#gen-model:focus { outline: none; border-color: var(--maple); box-shadow: 0 0 0 3px rgba(255, 122, 47, .15); }
 .intro-hint { margin-top: 18px; font-size: 12.5px; color: var(--ink-soft); }
 .intro-hint code { background: rgba(32,48,74,.07); padding: 2px 7px; border-radius: 6px; font-size: 12px; }
 
