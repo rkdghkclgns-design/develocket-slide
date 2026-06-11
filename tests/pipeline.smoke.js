@@ -106,7 +106,7 @@ function loadInto(ctx, file) {
  * 1) 모듈 로드
  * ---------------------------------------------------------------- */
 const ctx = vm.createContext(makeSandbox());
-["parser.js", "render-doc.js", "render-deck.js", "sample-data.js", "ai-config.js", "generate.js"].forEach(function (f) {
+["parser.js", "render-doc.js", "render-deck.js", "sample-data.js", "ai-config.js", "generate.js", "export.js"].forEach(function (f) {
   loadInto(ctx, f);
 });
 
@@ -153,6 +153,27 @@ ok((types.table || 0) >= 3, "표 블록 3개 이상 (개요·흐름·GROW 등)")
 ok((types.callout || 0) >= 1, "콜아웃 블록 1개 이상 (멘트 예시)");
 ok((types.labelpara || 0) >= 1, "라벨 문단 1개 이상 (강사 활동/설명)");
 ok((types.heading || 0) >= 5, "헤딩 블록 5개 이상");
+
+/* 4b) 교수안 이미지: 마크다운 ![](data:) / <img> 렌더, 깨진 참조(local:)·리터럴 HTML 미노출 */
+const imgDoc = K.parseDoc([
+  "# 이미지 문서",
+  "",
+  "![캡션이미지](data:image/png;base64,AAAA)",
+  "",
+  '<div class="image-wrapper"><img src="data:image/webp;base64,BBBB" alt="래퍼이미지"></div>',
+  "",
+  '<div class="image-wrapper"><img src="local:img_123" alt="깨진참조"></div>',
+  ""
+].join("\n"));
+const imgBlocks = imgDoc.blocks.filter(function (b) { return b.type === "image"; });
+eq(imgBlocks.length, 2, "교수안: 안전한 이미지 2개만 블록화(local: 제외)");
+ok(imgBlocks[0].src.indexOf("data:image/png") === 0, "교수안: 마크다운 ![](data:) 이미지 파싱");
+ok(imgBlocks.some(function (b) { return b.alt === "래퍼이미지"; }), "교수안: <img> 래퍼에서 alt 추출");
+const imgMount = new Stub();
+K.buildDoc(imgDoc, imgMount);
+ok(/<figure class="doc-figure"><img src="data:image\/png/.test(imgMount.innerHTML), "교수안: 이미지 블록 → figure 렌더");
+ok(imgMount.innerHTML.indexOf("local:img_123") === -1, "교수안: 깨진 참조(local:)는 렌더에 노출되지 않음");
+ok(imgMount.innerHTML.indexOf('class="image-wrapper"') === -1, "교수안: 래퍼 리터럴 HTML이 텍스트로 새지 않음");
 
 /* ----------------------------------------------------------------
  * 5) buildDoc / buildDeck — 렌더 단계까지 끊김 없이 동작
@@ -311,6 +332,35 @@ ok(typeof K.deckHeuristics.footOf === "function" && typeof K.deckHeuristics.spli
 ok(K.animOrder && typeof K.animOrder.ensure === "function", "animOrder.ensure 노출");
 ok(typeof K.animOrder.apply === "function" && typeof K.animOrder.setOrder === "function", "animOrder.apply/setOrder 노출");
 ok(typeof K.animOrder.replay === "function" && typeof K.animOrder.ensureAll === "function", "animOrder.replay/ensureAll 노출");
+
+/* ----------------------------------------------------------------
+ * 15) 이미지 생성 추천 프롬프트 (generate.js)
+ * ---------------------------------------------------------------- */
+ok(typeof K.recommendImagePrompt === "function", "generate.js: recommendImagePrompt 노출");
+const recPrompt = K.recommendImagePrompt({ visual: "버섯 캐릭터가 손 흔드는 모습", title: "표지", subject: "오리엔테이션" });
+ok(typeof recPrompt === "string" && recPrompt.indexOf("버섯 캐릭터가 손 흔드는 모습") === 0, "추천: 시각 제안을 앞에 둠");
+ok(/글자|텍스트 없이|일러스트/.test(recPrompt), "추천: 일관 아트 스타일 접미 포함");
+const recEmpty = K.recommendImagePrompt({});
+ok(typeof recEmpty === "string" && recEmpty.length > 0, "추천: 빈 컨텍스트에도 안전한 기본 프롬프트");
+
+/* ----------------------------------------------------------------
+ * 16) 내보낸 HTML 자기복원: standaloneDoc 에 소스(MD·참고이미지) 내장 + 왕복
+ * ---------------------------------------------------------------- */
+ok(typeof K.standaloneDoc === "function", "export.js: standaloneDoc 노출");
+const srcPayload = { doc: "# 교수안\n본문 <b>강조</b>", deck: "## 슬라이드 편성\n### 슬라이드 1 - 표지", source: "원고", refs: [{ name: "ref.png", url: "data:image/png;base64,AAAA" }] };
+ctx.window.KBuilder.getSource = function () { return srcPayload; };
+const html = K.standaloneDoc({ meta: { "주제": "왕복테스트" }, slides: [{}, {}] }, '<section class="slide kind-cover"></section>', "/*css*/", "", null);
+ok(/id="kb-source"/.test(html), "내보내기: kb-source 스크립트 내장");
+ok(/deck-stage-inner/.test(html), "내보내기: 슬라이드 스테이지 포함");
+ok(html.indexOf("<b>강조</b>") === -1, "내보내기: 내장 JSON의 < 가 이스케이프되어 원시 태그로 새지 않음");
+// 불러오기 왕복 — 내장 JSON을 추출해 역직렬화하면 원본과 동일
+const m = html.match(/<script type="application\/json" id="kb-source">([\s\S]*?)<\/script>/);
+ok(!!m, "내보내기: kb-source 본문 추출 가능");
+let roundtrip = null;
+try { roundtrip = JSON.parse(m[1].replace(/\\u003c/g, "<")); } catch (e) {}
+ok(roundtrip && roundtrip.doc === srcPayload.doc, "왕복: 교수안 MD 복원 일치");
+ok(roundtrip && roundtrip.deck === srcPayload.deck, "왕복: 편성안 MD 복원 일치");
+ok(roundtrip && roundtrip.refs && roundtrip.refs.length === 1 && roundtrip.refs[0].url === srcPayload.refs[0].url, "왕복: 참고 이미지 복원 일치");
 
 /* ----------------------------------------------------------------
  * 결과 출력

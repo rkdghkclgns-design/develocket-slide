@@ -701,3 +701,54 @@ body {
 @media print and (min-width: 0) {
   body.print-deck { background: #fff; }
 }
+
+/* ===== 교수안 문서 내 이미지 (마크다운/붙여넣기) ===== */
+.doc-figure { margin: 18px 0; text-align: center; }
+.doc-figure img {
+  max-width: 100%; max-height: 520px; border-radius: 12px;
+  border: 1px solid var(--line); box-shadow: 0 4px 14px rgba(32, 48, 74, .08);
+}
+.doc-figure figcaption { margin-top: 8px; font-size: 12.5px; color: var(--ink-soft); }
+.doc-inline-img {
+  max-width: 100%; vertical-align: middle; border-radius: 8px; border: 1px solid var(--line);
+}
+
+/* ===== 참고 이미지 갤러리 (교수안 말미) ===== */
+.doc-refs { margin-top: 28px; padding-top: 18px; border-top: 1px dashed var(--line); }
+.doc-ref-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; margin-top: 12px; }
+.doc-ref-item { margin: 0; }
+.doc-ref-item img {
+  width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px;
+  border: 1px solid var(--line); box-shadow: 0 3px 10px rgba(32, 48, 74, .07);
+}
+.doc-ref-item figcaption { margin-top: 6px; font-size: 12px; color: var(--ink-soft); text-align: center; word-break: break-all; }
+
+/* ===== 인트로: 참고 이미지 트레이 (양 모드 공통) ===== */
+.ref-tray { margin-top: 18px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #faf8f2; text-align: left; }
+.ref-tray-head { font-size: 13.5px; font-weight: 800; color: var(--ink); display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.ref-tray-sub { font-size: 11.5px; font-weight: 600; color: var(--ink-soft); }
+.ref-tray-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.ref-thumb { position: relative; width: 84px; height: 84px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: #fff; }
+.ref-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ref-thumb .ref-rm {
+  position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border: 0; border-radius: 50%;
+  background: rgba(32, 48, 74, .72); color: #fff; font-size: 14px; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.ref-thumb .ref-rm:hover { background: #20304a; }
+.ref-add {
+  width: 84px; height: 84px; border: 2px dashed var(--line); border-radius: 10px; background: #fff;
+  color: var(--ink-soft); font-size: 12.5px; font-weight: 700; cursor: pointer; padding: 6px;
+}
+.ref-add:hover { border-color: var(--mushroom); color: var(--ink); }
+
+/* ===== 슬롯 삽입 피커 모달 ===== */
+.ref-pick-ov { position: fixed; inset: 0; z-index: 400; background: rgba(20, 24, 40, .5); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.ref-pick-box { width: min(720px, 92vw); max-height: 84vh; background: #fff; border-radius: 16px; box-shadow: var(--shadow-md); display: flex; flex-direction: column; overflow: hidden; }
+.ref-pick-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--line); font-weight: 800; color: var(--ink); }
+.ref-pick-x { border: 0; background: rgba(32, 48, 74, .07); width: 30px; height: 30px; border-radius: 50%; font-size: 18px; cursor: pointer; color: var(--ink); }
+.ref-pick-x:hover { background: rgba(32, 48, 74, .14); }
+.ref-pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; padding: 18px 20px; overflow: auto; }
+.ref-pick-item { padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; cursor: pointer; background: #fff; transition: transform .1s, border-color .1s; }
+.ref-pick-item:hover { transform: translateY(-2px); border-color: var(--mushroom); box-shadow: 0 6px 16px rgba(32, 48, 74, .12); }
+.ref-pick-item img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }

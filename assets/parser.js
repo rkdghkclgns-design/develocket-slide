@@ -152,10 +152,17 @@
     var i = 0;
 
     function inline(s) {
-      // **bold**, `code`, [text](url), 링크 자동
+      // **bold**, `code`, ![alt](img), [text](url), 링크 자동
       s = escapeHtml(s);
       s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
       s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+      // 인라인 이미지 — 링크 치환보다 먼저(그래야 ![..](..)가 링크로 새지 않음). data:image·http(s)만 허용
+      s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (m, alt, url) {
+        url = url.trim();
+        return /^(data:image\/|https?:)/i.test(url)
+          ? '<img class="doc-inline-img" src="' + url + '" alt="' + alt + '" loading="lazy" />'
+          : alt;
+      });
       // 링크는 안전한 스킴(https?·mailto·페이지 내 앵커)만 허용 — javascript: 등은 라벨 텍스트로만 남긴다
       s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (m, label, url) {
         url = url.trim();
@@ -183,6 +190,27 @@
         i++;
         continue;
       }
+
+      // 이미지 — 마크다운 ![alt](url) 단독 줄 (Ctrl+V 붙여넣기 산출물 포함)
+      var mdImg = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+      if (mdImg) {
+        var iu = mdImg[2].trim();
+        if (/^(data:image\/|https?:)/i.test(iu)) blocks.push({ type: "image", src: iu, alt: mdImg[1].trim() });
+        i++;
+        continue;
+      }
+      // 이미지 — <img ...> 또는 <div class="image-wrapper"><img ...> (AI 산출물·붙여넣기)
+      if (/<img\b/i.test(line)) {
+        var tag = line.match(/<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["'][^>]*>/i);
+        var isrc = tag ? tag[1].trim() : "";
+        var ialt = (line.match(/\balt\s*=\s*["']([^"']*)["']/i) || [])[1] || "";
+        // 안전 스킴만 렌더 — local: 등 깨진 참조나 래퍼는 조용히 건너뛴다(리터럴 HTML 노출 방지)
+        if (isrc && /^(data:image\/|https?:)/i.test(isrc)) blocks.push({ type: "image", src: isrc, alt: ialt });
+        i++;
+        continue;
+      }
+      // 이미지 래퍼 등 단독 HTML 태그 줄 — 렌더 노이즈가 되지 않게 건너뛴다
+      if (/^<\/?(div|figure|figcaption|picture)\b[^>]*>$/i.test(line)) { i++; continue; }
 
       // 표
       if (/^\|/.test(line) && i + 1 < lines.length && /^\|?[\s:|-]+\|/.test(lines[i + 1].trim()) && /-/.test(lines[i + 1])) {

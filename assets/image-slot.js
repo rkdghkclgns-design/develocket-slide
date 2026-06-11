@@ -225,8 +225,17 @@
     '  border-radius:9px;background:rgba(232,89,12,.92);color:#fff;font-size:16px;cursor:pointer;' +
     '  align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.25)}' +
     '.aibtn:hover{background:#e8590c}' +
-    ':host-context(.deck-viewport.editing) .ai-gen{display:inline-block}' +
-    ':host-context(.deck-viewport.editing) .aibtn{display:flex}' +
+    // 참고 이미지에서 채우기 (편집 모드에서만 노출, AI 버튼 옆)
+    '.refbtn{display:none;position:absolute;top:8px;left:48px;z-index:6;width:34px;height:34px;border:0;' +
+    '  border-radius:9px;background:rgba(43,34,64,.86);color:#fff;font-size:15px;cursor:pointer;' +
+    '  align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.25)}' +
+    '.refbtn:hover{background:#2b2240}' +
+    '.ref-pick{display:none;margin-top:8px;border:1px solid #d7d2e6;background:#f4f2fb;color:#4b4470;' +
+    '  font-weight:700;font-size:12px;border-radius:8px;padding:7px 12px;cursor:pointer}' +
+    '.ref-pick:hover{background:#eae6f7}' +
+    ':host-context(.deck-viewport.editing) .ai-gen,:host-context(.deck-viewport.editing) .ref-pick{display:inline-block}' +
+    ':host-context(.deck-viewport.editing) .aibtn,:host-context(.deck-viewport.editing) .refbtn{display:flex}' +
+    ':host([data-loading]) .refbtn{display:none}' +
     '.busy{display:none;position:absolute;inset:0;z-index:8;flex-direction:column;gap:10px;' +
     '  align-items:center;justify-content:center;background:rgba(255,251,240,.82);color:#e8590c;' +
     '  font-weight:800;font-size:14px}' +
@@ -260,10 +269,12 @@
         '    <div class="cap"></div>' +
         '    <div class="sub">or <u>browse files</u></div>' +
         '    <button class="ai-gen" data-act="ai" type="button">✨ AI로 이미지 생성</button>' +
+        '    <button class="ref-pick" data-act="ref" type="button">📎 참고 이미지에서</button>' +
         '  </div>' +
         '  <div class="ring" part="ring"></div>' +
         '</div>' +
         '<button class="aibtn" data-act="ai" type="button" title="AI 이미지 생성">✨</button>' +
+        '<button class="refbtn" data-act="ref" type="button" title="참고 이미지에서 선택">📎</button>' +
         '<div class="busy"><div class="sp"></div>AI 이미지 생성 중…</div>' +
         '<div class="spill">' +
         '  <img class="ghost" alt="" draggable="false">' +
@@ -293,6 +304,7 @@
       root.addEventListener('click', (e) => {
         const act = e.target && e.target.getAttribute && e.target.getAttribute('data-act');
         if (act === 'ai') { e.stopPropagation(); this._aiGen(); return; }
+        if (act === 'ref') { e.stopPropagation(); this._pickRef(); return; }
         if (act === 'replace') { this._exitReframe(true); this._input.click(); }
         if (act === 'clear') {
           this._exitReframe(false);
@@ -531,13 +543,34 @@
       setTimeout(() => { if (this._err === d) { d.remove(); this._err = null; } }, 3000);
     }
 
-    // AI 이미지 생성: placeholder(이미지/시각 제안)를 기본 프롬프트로 Gemini 이미지 모델 호출.
+    // 슬라이드 컨텍스트(제목·주제)를 모아 추천 프롬프트의 입력을 만든다.
+    _promptContext() {
+      const base = (this.getAttribute('placeholder') || '').trim();
+      let title = '';
+      try {
+        const slideEl = this.closest && this.closest('.slide');
+        if (slideEl) {
+          const tEl = slideEl.querySelector('.slidetitle, .cover-title, .st-kicker');
+          title = tEl ? String(tEl.textContent || '').trim()
+            : String(slideEl.getAttribute('data-screen-label') || '').replace(/^\d+\s*/, '').trim();
+        }
+      } catch (e) {}
+      let subject = '';
+      try { subject = (window.KBuilder.lastDeck.parsed.meta['주제']) || ''; } catch (e) {}
+      return { visual: base, title: title, subject: subject };
+    }
+
+    // AI 이미지 생성: 슬라이드 맥락 기반 추천 프롬프트를 프리필해 Gemini 이미지 모델 호출.
     _aiGen() {
       if (this.hasAttribute('data-loading')) return;
       const gen = window.KBuilder && window.KBuilder.genImage;
       if (typeof gen !== 'function') { this._setError('AI 이미지 생성을 사용할 수 없어요.'); return; }
       const base = (this.getAttribute('placeholder') || '').trim();
-      const prompt = window.prompt('생성할 이미지를 설명하세요 (수정 가능)', base || '교육 슬라이드용 일러스트');
+      let rec = base || '교육 슬라이드용 일러스트';
+      try {
+        if (window.KBuilder.recommendImagePrompt) rec = window.KBuilder.recommendImagePrompt(this._promptContext());
+      } catch (e) {}
+      const prompt = window.prompt('생성할 이미지를 설명하세요 — 맞춤 추천 프롬프트를 넣어 두었어요 (수정 가능)', rec);
       if (prompt == null || !prompt.trim()) return;
       this.setAttribute('data-loading', '');
       this._exitReframe(false);
@@ -552,6 +585,22 @@
       }).catch((err) => {
         self.removeAttribute('data-loading');
         self._setError('생성 실패: ' + (err && err.message ? err.message : err));
+      });
+    }
+
+    // 참고 이미지 트레이에서 골라 이 슬롯을 채운다 (AI 결과와 같은 src 경로 사용).
+    _pickRef() {
+      const pick = window.KBuilder && window.KBuilder.pickRefImage;
+      if (typeof pick !== 'function') { this._setError('참고 이미지를 사용할 수 없어요.'); return; }
+      const ed = window.KBuilder.editor;
+      const self = this;
+      pick().then((url) => {
+        if (!url) return;
+        if (ed && ed.snapshot) { try { ed.snapshot(); } catch (e) {} }
+        self._exitReframe(false);
+        if (self.id) setSlot(self.id, null); else self._local = null; // 기존 드롭 해제 → src가 보이도록
+        self.setAttribute('src', url);                                // attributeChangedCallback → _render
+        if (ed && ed.buildRail) { try { ed.buildRail(); } catch (e) {} }
       });
     }
 

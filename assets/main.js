@@ -95,6 +95,25 @@
     r.readAsText(f, "utf-8");
     importInput.value = "";
   });
+  /* 현재 소스 MD·참고이미지 — HTML 내보내기에 내장되어 '불러오기'에서 한번에 복원된다 */
+  K.getSource = function () {
+    return {
+      doc: state.docText || "",
+      deck: state.deckText || "",
+      source: state.sourceText || "",
+      refs: (K.getRefImages ? K.getRefImages() : [])
+    };
+  };
+  /* 내보낸 HTML에 내장된 소스(JSON)를 읽는다 — 없으면 null (구버전 파일) */
+  function readEmbeddedSource(doc) {
+    var el = doc.getElementById("kb-source");
+    if (!el) return null;
+    try {
+      var data = JSON.parse(el.textContent || el.text || "");
+      return (data && typeof data === "object") ? data : null;
+    } catch (e) { return null; }
+  }
+
   /* 불러온 HTML에서 실행 가능 요소·핸들러를 제거 (innerHTML 마운트 전 세니타이즈) */
   function sanitizeImported(root) {
     Array.prototype.slice.call(root.querySelectorAll("script,iframe,object,embed,link,meta,base,form")).forEach(function (n) { n.remove(); });
@@ -116,19 +135,44 @@
       alert("지원하지 않는 HTML입니다. 이 빌더에서 내보낸 슬라이드 HTML 파일을 선택해 주세요.");
       return;
     }
+    // 내장 소스(교수안·편성안 MD·참고이미지) 복원 — 있으면 한번에 되살려 수정 가능하게 한다
+    var src = readEmbeddedSource(doc); // 세니타이즈 전에 읽는다(DOMParser는 스크립트를 실행하지 않음)
     sanitizeImported(stage);
     var tabbar = document.getElementById("tabbar-tabs");
     tabbar.innerHTML = "";
     if (deckCtrl && deckCtrl.destroy) deckCtrl.destroy();
+
+    if (src) {
+      state.docText = src.doc || "";
+      state.deckText = src.deck || "";
+      state.sourceText = src.source || "";
+      if (K.refImagesSet) K.refImagesSet(src.refs || []);
+      // 검토 화면 MD 채우기 — '← 이전 단계'에서 MD를 고쳐 다시 빌드할 수 있다
+      var rdoc = document.getElementById("rdoc"); if (rdoc) rdoc.value = state.docText;
+      var rdeck = document.getElementById("rdeck"); if (rdeck) rdeck.value = state.deckText;
+      if (state.docText) markFilled(dzDoc, "교수안.md (불러옴)");
+      if (state.deckText) markFilled(dzDeck, "슬라이드 편성안.md (불러옴)");
+      if (state.sourceText && srcText) srcText.value = state.sourceText;
+      refreshConvert(); refreshGenerate();
+      // 교수안 탭 — MD에서 문서를 다시 렌더(이미지·참고 이미지 갤러리 포함)
+      if (state.docText) {
+        K.buildDoc(K.parseDoc(state.docText), document.getElementById("doc-mount"));
+        tabbar.appendChild(makeTab("doc", "📖 교수안", null));
+      }
+    }
+
+    // 슬라이드 — 사용자가 편집한 HTML 그대로 마운트해 시각 편집을 보존한다
     deckCtrl = K.mountDeckHtml(stage.innerHTML, document.getElementById("deck-mount"), { "주제": doc.title || "불러온 슬라이드" });
     if (K.editor) K.editor.init(deckCtrl);
     applyTheme(stage.classList.contains("theme-dark") ? "dark" : "maple");
     tabbar.appendChild(makeTab("deck", "🎬 슬라이드", deckCtrl.count));
+
     document.getElementById("tab-tools").style.display = "flex";
-    document.getElementById("btn-prev-step").style.display = "none";
-    cameFromReview = false;
+    // 소스가 내장돼 있으면 '← 이전 단계'를 검토(MD 편집)로 연결한다
+    cameFromReview = !!src;
+    document.getElementById("btn-prev-step").style.display = cameFromReview ? "inline-flex" : "none";
     showScreen("result");
-    activateTab("deck");
+    activateTab("deck"); // 편집은 슬라이드 탭에서 — 교수안 탭은 옆에 함께 노출
     if (K.editor) K.editor.setEdit(true); // 불러오기 성공 → 바로 편집 가능
   }
 
@@ -335,6 +379,34 @@
       document.querySelectorAll(".rt-pane").forEach(function (p) { p.classList.toggle("active", p.id === rt); });
     });
   });
+
+  /* 검토 MD에 이미지 붙여넣기(Ctrl+V) → 커서 위치에 ![](dataURL) 삽입 → 빌드 시 렌더 */
+  function wirePasteImage(ta) {
+    if (!ta) return;
+    ta.addEventListener("paste", function (e) {
+      var items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      var file = null;
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].kind === "file" && String(items[i].type).indexOf("image/") === 0) { file = items[i].getAsFile(); break; }
+      }
+      if (!file) return;
+      e.preventDefault();
+      var insert = function (url) {
+        var md = "\n\n![붙여넣은 이미지](" + url + ")\n\n";
+        var start = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+        var end = ta.selectionEnd != null ? ta.selectionEnd : ta.value.length;
+        ta.value = ta.value.slice(0, start) + md + ta.value.slice(end);
+        var pos = start + md.length;
+        try { ta.selectionStart = ta.selectionEnd = pos; } catch (e2) {}
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+      if (K.refDownscale) K.refDownscale(file).then(insert).catch(function () {});
+      else { var fr = new FileReader(); fr.onload = function () { insert(String(fr.result)); }; fr.readAsDataURL(file); }
+    });
+  }
+  wirePasteImage(document.getElementById("rdoc"));
+  wirePasteImage(document.getElementById("rdeck"));
   function activeReviewPane() {
     return document.querySelector(".rt-pane.active");
   }

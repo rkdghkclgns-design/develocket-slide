@@ -68,6 +68,9 @@
         out.push(renderList(b));
       } else if (b.type === "table") {
         out.push(renderTable(b));
+      } else if (b.type === "image") {
+        out.push('<figure class="doc-figure"><img src="' + esc(b.src) + '" alt="' + esc(b.alt || "") + '" loading="lazy" />' +
+          (b.alt ? '<figcaption>' + esc(b.alt) + '</figcaption>' : "") + '</figure>');
       } else if (b.type === "labelpara") {
         var lc = labelClass(b.label);
         out.push('<div class="doc-label ' + lc + '"><span class="dl-tag">' + esc(b.label) + '</span><div class="dl-body">' + b.html + '</div></div>');
@@ -76,11 +79,24 @@
       }
     });
 
+    // 참고 이미지 — 양 모드에서 모은 이미지를 교수안 말미에 갤러리로 인용
+    out.push(refGalleryHtml());
+
     out.push('</div></div>');
     mount.innerHTML = '<article class="doc-page">' + out.join("") + '</article>';
 
     // 본문 헤딩으로 목차 사이드 생성
     buildTocSidebar(mount, parsed);
+  }
+
+  function refGalleryHtml() {
+    var refs = (window.KBuilder.getRefImages && window.KBuilder.getRefImages()) || [];
+    if (!refs.length) return "";
+    var items = refs.map(function (r) {
+      return '<figure class="doc-ref-item"><img src="' + esc(r.url) + '" alt="' + esc(r.name) + '" loading="lazy" />' +
+        (r.name ? '<figcaption>' + esc(r.name) + '</figcaption>' : "") + '</figure>';
+    }).join("");
+    return '<section class="doc-refs"><h2 class="doc-h2">참고 이미지</h2><div class="doc-ref-grid">' + items + '</div></section>';
   }
 
   function labelClass(label) {

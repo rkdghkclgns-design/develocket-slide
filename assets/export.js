@@ -99,6 +99,13 @@
     var fontPart = fontCss
       ? '<style>' + fontCss + '</style>'
       : '<link href="https://fonts.googleapis.com/css2?family=Jua&family=Gothic+A1:wght@400;500;700;800;900&display=swap" rel="stylesheet"/>';
+    // 교수안·편성안·소스 원고 MD를 내장 — '내보낸 HTML 불러오기'에서 한번에 복원·수정 가능
+    var src = window.KBuilder.getSource ? window.KBuilder.getSource() : null;
+    var srcPart = "";
+    if (src && (src.doc || src.deck || src.source)) {
+      srcPart = '<script type="application/json" id="kb-source">' +
+        JSON.stringify(src).replace(/</g, "\\u003c") + '<\/script>';
+    }
     return '<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"/>' +
       '<meta name="viewport" content="width=device-width, initial-scale=1"/>' +
       '<title>' + title + '</title>' + fontPart +
@@ -109,7 +116,7 @@
       '<button class="deck-nav prev" aria-label="이전">‹</button>' +
       '<button class="deck-nav next" aria-label="다음">›</button>' +
       '<div class="deck-counter"><span class="dc-cur">1</span> / <span class="dc-tot">' + parsed.slides.length + '</span></div>' +
-      '</div><script>' + stageScript() + '<\/script></body></html>';
+      '</div>' + srcPart + '<script>' + stageScript() + '<\/script></body></html>';
   }
 
   function stageScript() {
@@ -341,4 +348,5 @@
   window.KBuilder = window.KBuilder || {};
   window.KBuilder.exportHTML = exportHTML;
   window.KBuilder.exportPPTX = exportPPTX;
+  window.KBuilder.standaloneDoc = standaloneDoc; // 순수 조립 함수 (테스트/QA용)
 })();

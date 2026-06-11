@@ -394,8 +394,26 @@
     });
   }
 
+  /* ---------- 이미지 생성 추천 프롬프트 ---------- */
+  /* 슬롯의 시각 제안 + 슬라이드 제목 + 강의 주제 + 일관 아트 스타일을 묶어
+     바로 생성에 쓸 수 있는 한국어 프롬프트를 만든다. (image-slot _aiGen에서 프리필) */
+  function recommendImagePrompt(ctx) {
+    ctx = ctx || {};
+    var visual = String(ctx.visual || "").trim();
+    var title = String(ctx.title || "").trim();
+    var subject = String(ctx.subject || "").trim();
+    var core = visual || title || subject || "교육 내용을 상징하는 장면";
+    var parts = [core];
+    if (title && title !== core && title !== visual) parts.push("슬라이드 주제: " + title);
+    else if (subject && subject !== core) parts.push("강의 주제: " + subject);
+    // 슬라이드 톤과 어울리는 일관 아트 스타일 — 글자 없는 깔끔한 일러스트
+    parts.push("밝고 친근한 플랫 벡터 일러스트레이션, 부드러운 파스텔 색감, 단순하고 깔끔한 배경, 글자·텍스트 없이, 고해상도 교육용 슬라이드 삽화");
+    return parts.join(", ");
+  }
+
   window.KBuilder = window.KBuilder || {};
   window.KBuilder.generateFromSource = generateFromSource;
   window.KBuilder.genImage = genImage;            // 이미지 슬롯 AI 생성에서 사용
+  window.KBuilder.recommendImagePrompt = recommendImagePrompt; // 슬롯 추천 프롬프트
   window.KBuilder.splitSections = splitSections; // 디버그용
 })();
