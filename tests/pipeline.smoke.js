@@ -221,14 +221,15 @@ eq((cdMount.innerHTML.match(/class="slide /g) || []).length, 3, "임의 MD: 3장
 /* ----------------------------------------------------------------
  * 7) AI 생성 백엔드 배선 (Supabase 엣지 펑션 slide-gemini)
  * ---------------------------------------------------------------- */
-ok(K.AI && typeof K.AI.endpoint === "string", "ai-config: AI.endpoint 노출");
-ok(/^https:\/\/.+\/functions\/v1\/slide-gemini$/.test(K.AI.endpoint || ""), "ai-config: slide-gemini 엔드포인트 형식");
+ok(K.AI && K.AI.endpoint == null, "ai-config: 외부 endpoint 차단(null)");
+ok(K.AI && K.AI.imageEndpoint == null, "ai-config: 외부 imageEndpoint 차단(null)");
 eq(K.AI && K.AI.model, "gemini-2.5-pro", "ai-config: 기본 모델 = gemini-2.5-pro");
 ok(Array.isArray(K.AI.models) && K.AI.models.length >= 2, "ai-config: 선택 가능한 모델 2개 이상");
 ok(K.AI.models.every(function (m) { return m.id && m.label; }), "ai-config: 각 모델에 id·label 존재");
 ok(K.AI.models.some(function (m) { return m.id === K.AI.model; }), "ai-config: 기본 모델이 목록에 포함");
 ok(K.AI.models.every(function (m) { return /gemini-2\.5/.test(m.id); }), "ai-config: 모든 모델 2.5 계열(thinking 지원)");
 ok(typeof K.generateFromSource === "function", "generate.js: generateFromSource 노출");
+ok(typeof K.writeSource === "function", "generate.js: writeSource(소스 원고 만들기) 노출");
 ok(typeof K.splitSections === "function", "generate.js: splitSections 노출");
 const secOut = K.splitSections(
   "# 제목\n\n## 학습 목표\n- 목표\n\n## 1. 첫 섹션\n첫 섹션 본문입니다. 충분히 길게 작성한 설명 문장입니다.\n\n## 2. 둘째 섹션\n둘째 섹션 본문도 충분히 깁니다. 설명을 이어서 적습니다."

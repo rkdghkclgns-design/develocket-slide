@@ -65,11 +65,70 @@
   });
   if (srcText) srcText.addEventListener("input", function () { state.sourceText = srcText.value; refreshGenerate(); });
 
+  /* ---------- 소스 원고 만들기 (입력 → AI 원고 작성 → '소스 원고로 생성'으로 전달) ---------- */
+  (function initWrite() {
+    var brief = document.getElementById("write-brief");
+    if (!brief) return;
+    var btnWrite = document.getElementById("btn-write");
+    var status = document.getElementById("write-status");
+    var out = document.getElementById("write-out");
+    var result = document.getElementById("write-result");
+    var busy = false;
+    function refresh() { btnWrite.disabled = busy || !brief.value.trim(); }
+    brief.addEventListener("input", refresh);
+
+    /* 참고 MD 업로드 → 입력칸에 채워 확장 재료로 사용 */
+    var dzWrite = document.getElementById("dz-write");
+    if (dzWrite) wireZone(dzWrite, document.getElementById("file-write"), function (name, text) {
+      var cur = brief.value.trim();
+      brief.value = cur ? cur + "\n\n" + text : text;
+      markFilled(dzWrite, name);
+      refresh();
+    });
+
+    btnWrite.addEventListener("click", function () {
+      if (busy || !brief.value.trim()) return;
+      var aiReady = (K.AI && K.AI.endpoint) || (window.claude && window.claude.complete);
+      if (!aiReady || !K.writeSource) {
+        alert("AI 작성 기능을 사용할 수 없는 환경입니다. 소스 원고를 직접 작성해 '소스 원고로 생성' 모드를 이용해 주세요.");
+        return;
+      }
+      busy = true; refresh();
+      btnWrite.textContent = "🍁 작성 중…";
+      status.textContent = "AI가 소스 원고를 작성하고 있어요. 분량에 따라 1~2분 걸릴 수 있습니다…";
+      K.writeSource(brief.value, function (done, total, label) {
+        if (label) status.textContent = "🍁 " + label;
+      }).then(function (md) {
+        result.value = md;
+        out.hidden = false;
+        status.textContent = "작성 완료! 아래에서 수정한 뒤 '소스 원고로 생성 →' 버튼으로 넘기세요.";
+      }).catch(function (err) {
+        status.textContent = "⚠ " + ((err && err.message) || "원고 작성에 실패했습니다. 다시 시도해 주세요.");
+      }).then(function () {
+        busy = false; btnWrite.textContent = "✨ AI로 원고 작성"; refresh();
+      });
+    });
+
+    document.getElementById("btn-write-dl").addEventListener("click", function () {
+      if (result.value.trim()) download("소스 원고.md", result.value);
+    });
+    document.getElementById("btn-write-pass").addEventListener("click", function () {
+      var md = result.value.trim();
+      if (!md) { alert("먼저 AI로 원고를 작성해 주세요."); return; }
+      state.sourceText = md;
+      if (srcText) srcText.value = md;
+      refreshGenerate();
+      var gb = document.querySelector('.mode-btn[data-mode="generate"]');
+      if (gb) gb.click();
+    });
+  })();
+
   /* ---------- 모드 전환 ---------- */
   document.querySelectorAll(".mode-btn").forEach(function (b) {
     b.addEventListener("click", function () {
       document.querySelectorAll(".mode-btn").forEach(function (x) { x.classList.toggle("active", x === b); });
       var mode = b.dataset.mode;
+      document.getElementById("panel-write").hidden = mode !== "write";
       document.getElementById("panel-upload").hidden = mode !== "upload";
       document.getElementById("panel-generate").hidden = mode !== "generate";
     });
@@ -315,7 +374,14 @@
   /* ---------- AI 모델 선택 (K.AI.models 기반 · localStorage 기억) ---------- */
   (function initModelPicker() {
     var sel = document.getElementById("gen-model");
-    if (!sel || !K.AI || !Array.isArray(K.AI.models) || !K.AI.models.length) return;
+    if (!sel) return;
+    /* 외부 API 차단 상태(endpoint 없음)에서는 Gemini 모델 선택이 무의미 — 행 전체를 숨긴다 */
+    if (!K.AI || !K.AI.endpoint) {
+      var row = sel.closest(".gen-model-row");
+      if (row) row.style.display = "none";
+      return;
+    }
+    if (!Array.isArray(K.AI.models) || !K.AI.models.length) return;
     var ids = K.AI.models.map(function (m) { return m.id; });
     var saved = null;
     try { saved = localStorage.getItem("kb-ai-model"); } catch (e) {}

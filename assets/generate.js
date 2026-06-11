@@ -411,8 +411,110 @@
     return parts.join(", ");
   }
 
+  /* ---------- 소스 원고 만들기 (사용자 입력 → AI가 360분 분량 원고 작성) ----------
+     한 번의 호출로는 360분 분량이 잘릴 수 있어 2단계로 작성한다:
+     1) 개요(제목·목표·섹션 목록·시간 배분) → 2) 섹션별 본문 순차 작성 → 조립 */
+  function writeSource(brief, onProgress) {
+    var prog = typeof onProgress === "function" ? onProgress : function () {};
+    var briefShort = truncate(String(brief || ""), 8000);
+
+    var outlinePrompt = [
+      "당신은 교육 콘텐츠 전문 작가입니다. 아래 [입력]을 바탕으로 총 360분(6시수) 강의의 개요를 설계하세요.",
+      "",
+      "[출력 형식 — 아래 접두어 형식의 줄만, 다른 텍스트 금지]",
+      "제목: 강의 제목 한 줄",
+      "목표: 학습 목표 한 개 (3~5줄 반복)",
+      "섹션: 섹션 제목 | NN분 | 다룰 핵심 내용 한 줄 (7~10줄 반복)",
+      "",
+      "[규칙]",
+      "- 섹션은 7~10개, 시간 합계는 정확히 360분",
+      "- 도입 → 개념 → 심화 → 실습/활동 → 정리 흐름으로 구성",
+      "- [입력]에 이미 원고·MD가 포함되어 있으면 그 구조와 내용을 최대한 보존하면서 확장·세분화해 360분으로 설계",
+      "- 입력이 짧아도 주제에 맞는 심화·응용·실습 섹션을 보충해 360분을 채울 것",
+      "",
+      "[입력]",
+      briefShort
+    ].join("\n");
+
+    function parseOutline(text) {
+      var title = "", goals = [], secs = [];
+      String(text || "").split("\n").forEach(function (line) {
+        var l = line.trim();
+        var m;
+        if ((m = l.match(/^제목\s*[:：]\s*(.+)$/))) title = m[1].trim();
+        else if ((m = l.match(/^목표\s*[:：]\s*(.+)$/))) goals.push(m[1].trim());
+        else if ((m = l.match(/^섹션\s*[:：]\s*(.+)$/))) {
+          var parts = m[1].split("|").map(function (p) { return p.trim(); });
+          var tm = parseInt((parts[1] || "").replace(/[^0-9]/g, ""), 10) || 0;
+          if (parts[0]) secs.push({ title: parts[0], time: tm, note: parts[2] || "" });
+        }
+      });
+      return { title: title || "소스 원고", goals: goals, sections: secs };
+    }
+
+    function sectionPrompt(outline, sec, i, total) {
+      return [
+        "당신은 교육 콘텐츠 전문 작가입니다. 강의 '" + outline.title + "'의 섹션 " + (i + 1) + "/" + total + " 본문을 작성하세요.",
+        "",
+        "[섹션] " + sec.title + " (" + sec.time + "분)",
+        "[핵심 내용] " + (sec.note || sec.title),
+        "[전체 섹션 흐름] " + outline.sections.map(function (s) { return s.title; }).join(" → "),
+        "",
+        "[규칙]",
+        "- " + sec.time + "분 수업 분량에 맞게 5~8단락으로 풍부하게: 개념 설명, 구체 예시 2개 이상, 강사 설명 포인트, 학생 활동 아이디어 포함",
+        "- [강의 주제 입력 원문]에 이 섹션과 관련된 내용이 있으면 반드시 반영하고 확장할 것",
+        "- 첫 줄은 반드시 '## " + sec.title + " (" + sec.time + "분)' 그대로 시작",
+        "- 하위 소제목이 필요하면 '### 소제목' 사용",
+        "- 코드블록(```), HTML 태그, 머메이드 금지. 순수 마크다운만 출력",
+        "- 다른 섹션 내용이나 인사말 없이 이 섹션 본문만 출력",
+        "",
+        "[강의 주제 입력 원문(참고)]",
+        truncate(briefShort, 3000)
+      ].join("\n");
+    }
+
+    function stripFence(t) {
+      return String(t || "").trim().replace(/^```(?:markdown|md)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
+    }
+
+    prog(0, 1, "개요 설계 중…");
+    return call(outlinePrompt).then(function (outText) {
+      var outline = parseOutline(stripFence(outText));
+      if (!outline.sections.length) throw new Error("개요 생성에 실패했습니다. 다시 시도해 주세요.");
+      // 시간 보정: 합이 360이 아니면 비례 배분
+      var sum = outline.sections.reduce(function (a, s) { return a + (s.time || 0); }, 0);
+      if (sum > 0 && sum !== 360) {
+        var acc = 0;
+        outline.sections.forEach(function (s, i) {
+          if (i === outline.sections.length - 1) { s.time = 360 - acc; }
+          else { s.time = Math.max(20, Math.round((s.time / sum) * 360 / 5) * 5); acc += s.time; }
+        });
+      }
+      var total = outline.sections.length;
+      var results = [];
+      var chain = Promise.resolve();
+      outline.sections.forEach(function (sec, i) {
+        chain = chain.then(function () {
+          prog(i, total, "섹션 " + (i + 1) + "/" + total + " 작성 중… (" + sec.title + ")");
+          return call(sectionPrompt(outline, sec, i, total)).then(function (t) {
+            var md = stripFence(t);
+            if (!/^##\s/.test(md)) md = "## " + sec.title + " (" + sec.time + "분)\n\n" + md;
+            results.push(md);
+          });
+        });
+      });
+      return chain.then(function () {
+        prog(total, total, "원고 조립 중…");
+        var head = "# " + outline.title + "\n\n## 학습 목표\n" +
+          (outline.goals.length ? outline.goals.map(function (g) { return "- " + g; }).join("\n") : "- " + outline.title + " 이해") + "\n";
+        return head + "\n" + results.join("\n\n");
+      });
+    });
+  }
+
   window.KBuilder = window.KBuilder || {};
   window.KBuilder.generateFromSource = generateFromSource;
+  window.KBuilder.writeSource = writeSource;       // 소스 원고 만들기 모드에서 사용
   window.KBuilder.genImage = genImage;            // 이미지 슬롯 AI 생성에서 사용
   window.KBuilder.recommendImagePrompt = recommendImagePrompt; // 슬롯 추천 프롬프트
   window.KBuilder.splitSections = splitSections; // 디버그용
