@@ -61,10 +61,11 @@
     return m ? parseInt(m[1], 10) : 0;
   }
 
-  /* ---------- AI 호출 (Supabase 엣지 펑션 우선 · Claude 폴백 · 재시도 포함) ---------- */
+  /* ---------- AI 호출 (엣지 펑션 → 사용자 Google API 키 → Claude 폴백 · 재시도 포함) ---------- */
   function backend() {
     var ai = window.KBuilder && window.KBuilder.AI;
     if (ai && ai.endpoint) return "edge";
+    if (ai && typeof ai.hasKey === "function" && ai.hasKey()) return "gemini";
     if (window.claude && typeof window.claude.complete === "function") return "claude";
     return null;
   }
@@ -111,11 +112,45 @@
     });
   }
 
+  /* Gemini API 직접 호출 (사용자 로컬 키) — 키는 URL이 아닌 헤더로만 전송 */
+  function geminiParse(raw, res, emptyMsg) {
+    var data = {};
+    try { data = raw ? JSON.parse(raw) : {}; } catch (e) { data = {}; }
+    if (!res.ok || data.error) {
+      var msg = (data.error && (data.error.message || data.error)) || ("Gemini API 오류 (HTTP " + res.status + ")");
+      if (res.status === 400 && /API key/i.test(String(msg))) msg = "Google API 키가 올바르지 않습니다. 키를 확인해 주세요.";
+      if (res.status === 429) msg = "Gemini API 사용량 한도에 도달했어요. 잠시 후 다시 시도해 주세요.";
+      throw new Error(msg);
+    }
+    var parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
+    if (!parts.length) throw new Error(emptyMsg);
+    return parts;
+  }
+
+  function callGemini(prompt) {
+    var ai = window.KBuilder.AI;
+    var url = ai.apiBase + "/models/" + encodeURIComponent(ai.model) + ":generateContent";
+    return fetchWithTimeout(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": ai.getKey() },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+    }, 90000).then(function (res) {
+      return res.text().then(function (raw) {
+        var parts = geminiParse(raw, res, "AI 응답이 비어 있습니다.");
+        var text = parts.map(function (p) { return p.text || ""; }).join("");
+        if (!text.trim()) throw new Error("AI 응답이 비어 있습니다.");
+        return text;
+      });
+    });
+  }
+
   function call(prompt, tries) {
     tries = tries == null ? 2 : tries;
     var kind = backend();
-    if (!kind) return Promise.reject(new Error("AI 백엔드가 설정되지 않았습니다. assets/ai-config.js를 확인하세요."));
-    var p = kind === "edge" ? callEdge(prompt) : window.claude.complete(prompt);
+    if (!kind) return Promise.reject(new Error("AI 백엔드가 설정되지 않았습니다. 시작 화면에서 Google API 키를 저장하면 사용할 수 있어요."));
+    var p = kind === "edge" ? callEdge(prompt)
+          : kind === "gemini" ? callGemini(prompt)
+          : window.claude.complete(prompt);
     return p.catch(function (e) {
       if (tries > 0) {
         return new Promise(function (res) { setTimeout(res, 1200); })
@@ -164,11 +199,29 @@
     return meta;
   }
 
-  /* ---------- 섹션별 교수안 블록 + 슬라이드 생성 ---------- */
+  /* ---------- 섹션별 교수안 블록 + 슬라이드 생성 ----------
+     슬라이드 형식(KBuilder.AI.slideStyle):
+       presentation(기본) — 발표용. 슬라이드 1~2장, 큰 글씨·핵심 문구 위주
+       detailed          — 상세 교재형. 슬라이드 2~4장, 설명 문장이 담긴 촘촘한 구성 */
+  function slideStyle() {
+    var ai = window.KBuilder && window.KBuilder.AI;
+    return ai && ai.slideStyle === "detailed" ? "detailed" : "presentation";
+  }
+
   function genSection(sec, idx) {
+    var detailed = slideStyle() === "detailed";
+    var slideSpec = detailed
+      ? ("(2) 교재형 슬라이드 2~4장을 작성하세요. 각 슬라이드는 수강생이 슬라이드만 읽어도 이해되도록 " +
+         "설명 문장(각 1~2문장) 3~5개로 촘촘하게 구성하고, 필요한 정의·예시를 포함하세요.\n")
+      : "(2) 발표 슬라이드 1~2장을 작성하세요. 화면에 띄울 짧은 문구·핵심 키워드 위주로 간결하게.\n";
+    var slideBody = detailed
+      ? ("  - (개념을 설명하는 완결된 문장 1~2문장)\n" +
+         "  - (정의·예시·주의점 등 설명 문장을 3~5개 항목으로)\n")
+      : ("  - (화면에 띄울 짧은 문구)\n" +
+         "  - (핵심 키워드는 ' / '로 나열하거나 단계는 ' → '로 연결해도 됨)\n");
     var prompt =
       "당신은 직업훈련 교재 제작 전문가입니다. 아래 [원고]는 한 강의 섹션입니다.\n" +
-      "완전 초보 수강생 대상으로, (1) 강사용 교수안 블록과 (2) 발표 슬라이드 1~2장을 한국어로 간결하게 작성하세요.\n" +
+      "완전 초보 수강생 대상으로, (1) 강사용 교수안 블록과 " + slideSpec +
       "반드시 아래 형식만 출력하세요. 다른 설명·머리말 금지.\n\n" +
       "@@GYOSUAN@@\n" +
       "**설명 내용**: (핵심 개념을 쉽게 푼 2~4문장)\n" +
@@ -177,8 +230,7 @@
       "@@SLIDES@@\n" +
       "### 슬라이드 - (슬라이드 제목)\n" +
       "- 슬라이드 문구:\n" +
-      "  - (화면에 띄울 짧은 문구)\n" +
-      "  - (핵심 키워드는 ' / '로 나열하거나 단계는 ' → '로 연결해도 됨)\n" +
+      slideBody +
       "- 이미지/시각: (어울리는 이미지 한 줄 제안)\n" +
       "- 핵심 메시지: (이 슬라이드의 한 줄 메시지)\n\n" +
       "[섹션 제목] " + sec.title + "\n[원고]\n" + truncate(sec.text.trim(), 2400);
@@ -375,10 +427,9 @@
       });
   }
 
-  /* ---------- 이미지 생성 (Gemini 이미지 모델 · slide-image 엣지 펑션) ---------- */
-  function genImage(prompt) {
-    var ai = (window.KBuilder && window.KBuilder.AI) || {};
-    if (!ai.imageEndpoint) return Promise.reject(new Error("이미지 생성 백엔드가 설정되지 않았습니다."));
+  /* ---------- 이미지 생성 (엣지 펑션 → 사용자 Google API 키로 Gemini 이미지 모델 직접 호출) ---------- */
+  function genImageEdge(prompt) {
+    var ai = window.KBuilder.AI;
     return fetchWithTimeout(ai.imageEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -392,6 +443,37 @@
         return data.image; // data:image/...;base64,...
       });
     });
+  }
+
+  function genImageGemini(prompt) {
+    var ai = window.KBuilder.AI;
+    var url = ai.apiBase + "/models/" + encodeURIComponent(ai.imageModel) + ":generateContent";
+    return fetchWithTimeout(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": ai.getKey() },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseModalities: ["TEXT", "IMAGE"] }
+      })
+    }, 120000).then(function (res) {
+      return res.text().then(function (raw) {
+        var parts = geminiParse(raw, res, "이미지 응답이 비어 있습니다.");
+        for (var i = 0; i < parts.length; i++) {
+          var inline = parts[i].inlineData || parts[i].inline_data;
+          if (inline && inline.data) {
+            return "data:" + (inline.mimeType || inline.mime_type || "image/png") + ";base64," + inline.data;
+          }
+        }
+        throw new Error("이미지 응답이 비어 있습니다.");
+      });
+    });
+  }
+
+  function genImage(prompt) {
+    var ai = (window.KBuilder && window.KBuilder.AI) || {};
+    if (ai.imageEndpoint) return genImageEdge(prompt);
+    if (typeof ai.hasKey === "function" && ai.hasKey()) return genImageGemini(prompt);
+    return Promise.reject(new Error("이미지 생성 백엔드가 설정되지 않았습니다. 시작 화면에서 Google API 키를 저장하면 사용할 수 있어요."));
   }
 
   /* ---------- 이미지 생성 추천 프롬프트 ---------- */

@@ -107,6 +107,13 @@
         <div class="src-or"><span>또는 마크다운 직접 붙여넣기</span></div>
         <textarea id="source-text" class="source-text" spellcheck="false" placeholder="소스 원고(마크다운)를 여기에 붙여넣으세요. 파일을 올리면 내용이 여기에 채워져 편집할 수 있습니다."></textarea>
         <div class="gen-model-row">
+          <label for="gen-style">🎞 슬라이드 형식</label>
+          <select id="gen-style" title="생성할 슬라이드의 용도">
+            <option value="presentation">프레젠테이션용 · 큰 글씨, 핵심 문구 위주</option>
+            <option value="detailed">상세 교재형 · 설명 문장이 담긴 촘촘한 구성</option>
+          </select>
+        </div>
+        <div class="gen-model-row">
           <label for="gen-model">🤖 AI 모델</label>
           <select id="gen-model" title="생성에 사용할 AI 모델"></select>
         </div>
@@ -115,6 +122,18 @@
         </div>
         <p class="intro-hint">원고를 섹션 단위로 나눠 차례로 생성합니다. 분량에 따라 1~3분 걸릴 수 있어요. 생성된 MD는 <b>검토·편집·다운로드</b> 후 빌드합니다.</p>
       </div>
+
+      <!-- 공통: Google API 키 (BYOK) — 이 브라우저의 localStorage에만 저장, 외부 전송 없음 -->
+      <div class="api-key-row" id="api-key-row">
+        <label for="api-key-input">🔑 Google API 키</label>
+        <input type="password" id="api-key-input" autocomplete="off" spellcheck="false"
+               placeholder="AI 생성에 쓸 본인의 Google API 키 붙여넣기" />
+        <button class="sample-dl-btn" id="btn-key-save">저장</button>
+        <button class="sample-dl-btn" id="btn-key-clear" hidden>삭제</button>
+        <span class="api-key-status" id="api-key-status"></span>
+      </div>
+      <p class="intro-hint api-key-hint">키는 <b>이 컴퓨터의 브라우저에만 저장</b>되며 Google API 호출에만 사용됩니다.
+        키가 없다면 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a>에서 무료로 발급받을 수 있어요.</p>
 
       <!-- 공통 하단: 샘플 내려받기 · 이어서 편집 — 모드 토글과 무관하게 항상 노출 -->
       <div class="sample-dl">

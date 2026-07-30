@@ -65,6 +65,46 @@
   });
   if (srcText) srcText.addEventListener("input", function () { state.sourceText = srcText.value; refreshGenerate(); });
 
+  /* ---------- AI 사용 가능 여부 (엣지 · 사용자 Google API 키 · claude 폴백) ---------- */
+  function aiAvailable() {
+    if (K.AI && K.AI.endpoint) return true;
+    if (K.AI && typeof K.AI.hasKey === "function" && K.AI.hasKey()) return true;
+    return !!(window.claude && typeof window.claude.complete === "function");
+  }
+  var AI_UNAVAILABLE_MSG = "AI 기능을 사용하려면 시작 화면의 '🔑 Google API 키' 칸에 본인의 키를 붙여넣고 저장해 주세요.\n키는 이 컴퓨터의 브라우저에만 저장됩니다. (발급: aistudio.google.com/apikey)";
+
+  /* ---------- Google API 키 입력 (localStorage 전용 · 외부 전송 없음) ---------- */
+  (function initApiKey() {
+    var input = document.getElementById("api-key-input");
+    if (!input || !K.AI || typeof K.AI.getKey !== "function") return;
+    var btnSave = document.getElementById("btn-key-save");
+    var btnClear = document.getElementById("btn-key-clear");
+    var status = document.getElementById("api-key-status");
+
+    function refresh() {
+      var has = K.AI.hasKey();
+      btnClear.hidden = !has;
+      status.textContent = has ? "✓ 저장됨" : "";
+      input.placeholder = has ? "키가 저장되어 있어요 — 바꾸려면 새 키 입력"
+                              : "AI 생성에 쓸 본인의 Google API 키 붙여넣기";
+      refreshModelPicker();
+    }
+    btnSave.addEventListener("click", function () {
+      var v = input.value.trim();
+      if (!v) { alert("저장할 API 키를 입력해 주세요."); return; }
+      K.AI.setKey(v);
+      input.value = "";
+      refresh();
+    });
+    input.addEventListener("keydown", function (e) { if (e.key === "Enter") btnSave.click(); });
+    btnClear.addEventListener("click", function () {
+      if (!confirm("저장된 Google API 키를 삭제할까요?")) return;
+      K.AI.setKey("");
+      refresh();
+    });
+    refresh();
+  })();
+
   /* ---------- 소스 원고 만들기 (입력 → AI 원고 작성 → '소스 원고로 생성'으로 전달) ---------- */
   (function initWrite() {
     var brief = document.getElementById("write-brief");
@@ -88,9 +128,8 @@
 
     btnWrite.addEventListener("click", function () {
       if (busy || !brief.value.trim()) return;
-      var aiReady = (K.AI && K.AI.endpoint) || (window.claude && window.claude.complete);
-      if (!aiReady || !K.writeSource) {
-        alert("AI 작성 기능을 사용할 수 없는 환경입니다. 소스 원고를 직접 작성해 '소스 원고로 생성' 모드를 이용해 주세요.");
+      if (!aiAvailable() || !K.writeSource) {
+        alert(AI_UNAVAILABLE_MSG);
         return;
       }
       busy = true; refresh();
@@ -371,17 +410,36 @@
   var genStep = document.getElementById("gen-step");
   var genTotal = document.getElementById("gen-total");
 
-  /* ---------- AI 모델 선택 (K.AI.models 기반 · localStorage 기억) ---------- */
-  (function initModelPicker() {
+  /* ---------- AI 모델 선택 (K.AI.models 기반 · localStorage 기억) ----------
+     Gemini 백엔드(엣지 또는 사용자 키)가 있을 때만 행을 노출한다.
+     키 저장/삭제 시 initApiKey 가 다시 호출해 노출 상태를 갱신한다. */
+  /* ---------- 슬라이드 형식 선택 (프레젠테이션용 / 상세 교재형 · localStorage 기억) ---------- */
+  (function initStylePicker() {
+    var sel = document.getElementById("gen-style");
+    if (!sel || !K.AI) return;
+    var saved = null;
+    try { saved = localStorage.getItem("kb-slide-style"); } catch (e) {}
+    K.AI.slideStyle = saved === "detailed" ? "detailed" : "presentation";
+    sel.value = K.AI.slideStyle;
+    sel.addEventListener("change", function () {
+      K.AI.slideStyle = sel.value;
+      try { localStorage.setItem("kb-slide-style", sel.value); } catch (e) {}
+    });
+  })();
+
+  var modelPickerWired = false;
+  function refreshModelPicker() {
     var sel = document.getElementById("gen-model");
     if (!sel) return;
-    /* 외부 API 차단 상태(endpoint 없음)에서는 Gemini 모델 선택이 무의미 — 행 전체를 숨긴다 */
-    if (!K.AI || !K.AI.endpoint) {
-      var row = sel.closest(".gen-model-row");
+    var row = sel.closest(".gen-model-row");
+    var geminiReady = K.AI && (K.AI.endpoint || (typeof K.AI.hasKey === "function" && K.AI.hasKey()));
+    if (!geminiReady || !Array.isArray(K.AI.models) || !K.AI.models.length) {
       if (row) row.style.display = "none";
       return;
     }
-    if (!Array.isArray(K.AI.models) || !K.AI.models.length) return;
+    if (row) row.style.display = "";
+    if (modelPickerWired) return;
+    modelPickerWired = true;
     var ids = K.AI.models.map(function (m) { return m.id; });
     var saved = null;
     try { saved = localStorage.getItem("kb-ai-model"); } catch (e) {}
@@ -395,13 +453,13 @@
       K.AI.model = sel.value;
       try { localStorage.setItem("kb-ai-model", sel.value); } catch (e) {}
     });
-  })();
+  }
+  refreshModelPicker();
 
   function runGenerate() {
     if (!state.sourceText) return;
-    var aiReady = (K.AI && K.AI.endpoint) || (window.claude && window.claude.complete);
-    if (!aiReady) {
-      alert("AI 생성 기능을 사용할 수 없는 환경입니다. 완성된 MD 업로드 모드를 이용해 주세요.");
+    if (!aiAvailable()) {
+      alert(AI_UNAVAILABLE_MSG);
       return;
     }
     var myToken = ++genToken;
