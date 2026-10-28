@@ -12,17 +12,44 @@
 2. **✨ 샘플로 미리보기**를 누르면 내장 샘플이 바로 들어가 결과를 확인할 수 있습니다.
 3. 직접 만들려면 `samples/` 의 두 MD를 끌어다 놓거나 형식에 맞춰 작성합니다.
 
-> ✨ AI 생성 모드(소스 원고 → 교수안·편성안 자동 생성)는 **Supabase 엣지 펑션(slide-gemini)** 을 통해 **Google Gemini 2.5 Pro**로 동작합니다. 배포된 GitHub Pages에서 바로 사용할 수 있습니다. (Google API 키는 엣지 펑션 시크릿으로만 보관되어 클라이언트에 노출되지 않습니다.) 자세한 구조는 아래 [AI 생성 백엔드](#ai-생성-백엔드-소스-원고--교안) 참고.
+> ✨ AI 기능은 **사용자가 직접 입력한 API 키**로 동작합니다. 시작 화면의 **🔑 Google API 키**(Gemini) · **🔑 Claude API 키** 중 하나만 넣어도 되고, **둘 다 넣으면 장점별로 나눠 씁니다**. 키는 이 브라우저(localStorage)에만 저장되고 요청 헤더로만 전송됩니다. 자세한 내용은 [AI 생성 백엔드](#ai-생성-백엔드) 참고.
 
 ---
 
-## 두 가지 입력 모드
+## 입력 모드
 
 | 모드 | 입력 | 흐름 |
 |---|---|---|
+| 📝 소스 원고 만들기 | 강의 주제·대상·내용 메모 | AI가 360분 분량 원고 작성 → 소스 원고로 생성 |
 | 📂 완성된 MD 올리기 | 교수안 `.md` / 슬라이드 편성안 `.md` (둘 중 하나만 올려도 됨) | 업로드 → **변환하기** → 결과 |
 | ✨ 소스 원고로 생성 | 주제·개요·섹션이 담긴 강의 원고 `.md` | 업로드 → **AI 생성** → 검토·편집 → 빌드 |
 | 📂 내보낸 HTML 불러오기 | 이 빌더로 내보낸 슬라이드 `.html` | 불러오기 → 이어서 편집 |
+| 🧩 과정 설계(40시간) | 과정 주제 + 단원 목록 | 블록 설계 → NCS 선정 → 문제은행 → 교수안·교재·슬라이드 산출 ([아래](#-과정-설계-40시간)) |
+
+---
+
+## 🧩 과정 설계 (40시간)
+
+과정 주제와 단원을 한 줄씩 넣으면, 총 시간(기본 40시간)을 단원별로 나누고 각 단원을 **학습모듈 블록**으로 쪼개 교안을 만듭니다. 구조와 작성 규칙은 내부 지침 「콘텐츠 업무 설계」를 따릅니다.
+
+```
+주제 입력: 생성형 AI와 UGC 산업의 이해
+ - 생성형 AI의 종류
+ - LLM의 동작 원리
+ - …
+```
+
+| 탭 | 하는 일 |
+|---|---|
+| ① 블록 설계 | 단원(=교과목) 시간, 블록(=학습모듈) 시간, 블록 안 도입·전개·정리 **각부 소요 시간**을 편집. 합계가 맞지 않으면 표시하고 '시간 맞추기'로 비례 보정. 학습목표는 블록당 3개 이하·'~할 수 있다'로 검사(‘이해한다·안다’ 지적) |
+| ② NCS 선정 | 단원에 대응할 **현행 NCS 능력단위**를 추천(AI) 또는 직접 검색해 선정. 참조 목록(`assets/ncs-catalog.js`, NCS 29차 체계 2,156개 능력단위)에 있는 코드만 제안하며, 두 AI가 모두 고른 항목은 '교차 검증' 표시 |
+| ③ 문제은행 | 모든 문항에 [학습목표, 밴드] 태그. L1 객관식·단답식 / L2 서술형·코드제출 / L3 파일제출, 권장 10·5·3문항 분포표, 규칙 검수(정답 확정·복수정답 '모두 고르시오'·요소별 점수·루브릭 등), CSV 저장 |
+| ④ 산출물 | **교수안.md(기존 형식 유지, 단계 제목에 소요 시간)** · **교재(교습안).md**(블록마다 개요→학습목표→학습내용→체크리스트, 경어체) · **슬라이드 편성안.md** → 검토 후 현재 슬라이드 템플릿으로 빌드 · 과정 설계서.md(단원·블록 시간표) |
+
+- AI 키가 없어도 '기본 배분' · 키워드 NCS 검색 · 템플릿 조립 · 빈 문항 작성으로 작업할 수 있습니다.
+- 지침 중 LMS 운영 규칙(파일명·LMS 밖 유통 금지·출제 이력·회차 결과·유지보수 진단 매트릭스)은 운영 데이터가 필요하거나 이 도구의 내보내기 기능과 충돌해 반영하지 않았습니다. 출제 이력·오답률은 LMS에서 관리합니다.
+- 능력단위요소명은 ncs.go.kr에서 PDF로만 제공되어 참조 목록에 없습니다. 요소 대응은 ncs.go.kr에서 확인합니다.
+- NCS 개정 후에는 `node tools/build-ncs-catalog.mjs`로 참조 목록을 다시 만듭니다.
 
 ---
 
@@ -99,8 +126,13 @@
 │  ├─ editor.js               # 슬라이드 편집(선택/드래그/서식)
 │  ├─ layouts.js              # 레이아웃 갤러리(11종)
 │  ├─ image-slot.js           # <image-slot> 커스텀 엘리먼트
-│  ├─ ai-config.js            # AI 백엔드(엣지 펑션) 엔드포인트·모델 설정
-│  ├─ generate.js             # 소스 원고 → AI 생성 (엣지 펑션 호출, claude 폴백)
+│  ├─ ai-config.js            # AI 키·모델·역할 라우팅·외부 호출 가드
+│  ├─ ai-client.js            # AI 호출 공통 계층 (Gemini REST · Claude SDK · 이미지)
+│  ├─ generate.js             # 소스 원고 → 교수안·편성안 AI 생성
+│  ├─ ncs-catalog.js          # NCS 능력단위 참조 목록 (자동 생성)
+│  ├─ course-model.js         # 과정 설계 순수 로직 (시간 배분·지침 검사·문항 검수·MD 조립)
+│  ├─ course-ai.js            # 과정 설계 AI 단계 (블록 설계·NCS 추천·교안·문항)
+│  ├─ course-ui.js / course.css # 과정 설계 화면
 │  ├─ export.js               # HTML / PPTX 내보내기
 │  ├─ tutorial.js             # 첫 방문 튜토리얼 + 도움말
 │  ├─ sample-data.js          # 내장 샘플 MD
@@ -109,38 +141,31 @@
 │  └─ *.png                   # 로고·버섯 등 브랜드 에셋
 ├─ samples/                   # 예시 입력 MD (교수안·편성안)
 ├─ docs/                      # 디자인 핸드오프 문서
-└─ tests/pipeline.smoke.js    # parse→infer→render 스모크 테스트
+├─ tools/build-ncs-catalog.mjs # ncs.go.kr → ncs-catalog.js 재생성
+└─ tests/                     # pipeline.smoke.js · course.test.js
 ```
 
 ---
 
-## AI 생성 백엔드 (소스 원고 → 교안)
+## AI 생성 백엔드
 
-✨ 소스 원고로 생성 모드는 **Supabase 엣지 펑션**을 거쳐 **Google Gemini 2.5 Pro**를 호출합니다.
+AI 호출은 `assets/ai-client.js` 한 곳을 거치며, 작업의 **역할**에 따라 공급자를 고릅니다(규칙: `assets/ai-config.js`).
 
-```
-브라우저 (generate.js)
-   │  POST { prompt, model }
-   ▼
-Supabase Edge Function · slide-gemini      ← GEMINI_API_KEY (서버 시크릿)
-   │  v1beta/models/{선택 모델}:generateContent
-   ▼
-Google Gemini API  →  { text }
-```
+| 역할 | Google 키만 | Claude 키만 | 두 키 모두(혼합 모드) |
+|---|---|---|---|
+| 구조 설계·시간 배분·NCS 판단 | Gemini | Claude | **Claude** |
+| 교재·교수안 본문 작성 | Gemini | Claude | **Claude** — 어투 규칙 준수·장문 한국어 |
+| 슬라이드 문구·요약 | Gemini | Claude | **Gemini Flash** — 빠르고 저렴 |
+| 문항 초안 생성 | Gemini | Claude | **Gemini Flash** |
+| 문항 교차 검수 | (규칙 검수만) | (규칙 검수만) | **Claude** — 생성 모델과 다른 모델이 검수 |
+| 슬라이드 삽화 | Gemini 이미지 | 불가 | **Gemini 이미지** |
 
-- **키 보안** — `GEMINI_API_KEY`는 엣지 펑션 시크릿(서버)에만 존재하며 클라이언트 코드·네트워크에 노출되지 않습니다.
-- **접근 제어** — 엣지 펑션은 오리진 허용목록(`https://rkdghkclgns-design.github.io` 등)만 허용합니다(`verify_jwt=false` + origin allowlist).
-- **응답 안정화** — 2.5 Pro는 사고(thinking) 토큰이 출력 예산에 포함되므로, 엣지 펑션이 `thinkingBudget`을 제한하고 출력 예산을 넉넉히(8192) 잡아 빈 응답(`finishReason=MAX_TOKENS`)을 방지합니다.
-- **모델 선택** — 생성 화면에서 **Gemini 2.5 Pro(최고 품질) / Flash(빠른 균형) / Flash-Lite(가장 빠름)** 중 선택할 수 있고, 선택은 브라우저에 기억됩니다(localStorage). 모델 목록은 `assets/ai-config.js`의 `models` 배열에서 추가·삭제하면 셀렉터에 즉시 반영됩니다. ⚠️ Gemini **2.5 계열만** 사용하세요 — `gemini-2.0-flash` 등 구버전은 2026년 현재 지원 종료(404)이며, `thinkingConfig`는 2.5 계열에만 적용됩니다(엣지 펑션이 모델명으로 자동 분기).
-- **폴백** — `window.claude.complete`가 있는 환경(Claude 미리보기)에서는 자동으로 그쪽으로 폴백합니다.
-- **설정 변경** — 엔드포인트는 `assets/ai-config.js`에서 바꿀 수 있습니다.
-- **호출 규약** — `POST { prompt: string, model?, temperature?, maxOutputTokens?, thinkingBudget? }` → `200 { text }` / 오류 시 `{ error }`.
+NCS 추천은 혼합 모드에서 두 모델이 각자 고른 뒤 합의한 항목을 '교차 검증'으로 표시합니다.
 
-### 🎨 AI 이미지 생성
-
-편집 모드에서 이미지 슬롯의 **✨ AI로 이미지 생성** 버튼을 누르면 `slide-image` 엣지 펑션을 통해 **Gemini 이미지 모델(`gemini-3.1-flash-image-preview`)**로 슬라이드용 일러스트를 생성해 슬롯을 채웁니다. 슬롯의 "이미지/시각" 제안이 기본 프롬프트로 들어가며, 생성 전 설명을 수정할 수 있습니다. 이미지 안에는 글자가 들어가지 않도록 서버에서 지시합니다.
-
-> 엣지 펑션 소스는 디벨로켓 Supabase 프로젝트(`NexGen ERP`, ref `pkwbqbxuujpcvndpacsc`)의 `slide-gemini`(텍스트) · `slide-image`(이미지) 함수에 배포되어 있습니다. 소스 원고로 생성 모드는 파일 업로드 외에 **마크다운 직접 붙여넣기**도 지원합니다.
+- **키 보관** — 각 키는 이 브라우저의 localStorage에만 저장되고, 요청 헤더(`x-goog-api-key` / `x-api-key`)로만 전송됩니다. 키가 없는 공급자로의 호출은 `ai-config.js`의 가드가 차단하며, 예전 Supabase 엣지 펑션은 차단된 상태입니다.
+- **Gemini** — REST(`v1beta/models/{모델}:generateContent`). 생성 화면에서 2.5 Pro / Flash / Flash-Lite 선택, 이미지는 `gemini-2.5-flash-image`.
+- **Claude** — 공식 SDK `@anthropic-ai/sdk@0.133.0`을 처음 쓸 때 jsDelivr에서 불러와(`dangerouslyAllowBrowser`) 스트리밍으로 호출합니다. 모델은 Opus 5.5(기본) / Sonnet 5.5 / Haiku 5.5, 역할별 effort(low/medium). Opus·Sonnet에는 정책상 거절 시 서버가 다른 모델로 자동 재시도하는 **server-side fallback**(`fallbacks: "default"`)을 켜 두었습니다.
+- **호스트 폴백** — `window.claude.complete`가 있는 환경에서는 키 없이도 그쪽으로 동작합니다.
 
 ## 테스트
 
@@ -148,12 +173,13 @@ Google Gemini API  →  { text }
 
 ```bash
 node tests/pipeline.smoke.js
+node tests/course.test.js
 ```
 
-`parser.js` · `render-doc.js` · `render-deck.js` · `sample-data.js` · `ai-config.js` · `generate.js`를 `vm` 샌드박스(+최소 DOM 셰임)에 로드해 내장 샘플과 임의의 동일 구조 MD를 변환하고, 슬라이드 18장·표·콜아웃·표지 렌더, AI 백엔드 배선(엔드포인트·모델·`generateFromSource`)까지 총 46건을 단언합니다.
+`pipeline.smoke.js`는 파서·렌더러를 `vm` 샌드박스(+최소 DOM 셰임)에 로드해 내장 샘플 변환을 검증합니다. `course.test.js`는 주제 파싱·40시간 배분·블록 시간 합·지침 린트·문항 검수·NCS 검색·교수안/교재/편성안 조립과 키 조합별 AI 역할 라우팅을 검증합니다.
 
 ---
 
 ## 라이선스 / 출처
 
-디벨로켓(K-New Deal) 내부 제작 도구. 외부 의존성은 슬라이드 PPTX 내보내기를 위한 `pptxgenjs`(CDN) 하나뿐이며, 그 외 폰트는 Google Fonts(Jua, Gothic A1)를 사용합니다.
+디벨로켓(K-New Deal) 내부 제작 도구. 외부 의존성은 PPTX 내보내기용 `pptxgenjs`(CDN)와 Claude 키를 쓸 때만 불러오는 `@anthropic-ai/sdk`(CDN)이며, NCS 참조 목록 출처는 국가직무능력표준(ncs.go.kr)입니다. 그 외 폰트는 Google Fonts(Jua, Gothic A1)를 사용합니다.

@@ -65,45 +65,91 @@
   });
   if (srcText) srcText.addEventListener("input", function () { state.sourceText = srcText.value; refreshGenerate(); });
 
-  /* ---------- AI 사용 가능 여부 (엣지 · 사용자 Google API 키 · claude 폴백) ---------- */
+  /* ---------- AI 사용 가능 여부 (엣지 · 사용자 Google/Claude 키 · 호스트 폴백) ---------- */
   function aiAvailable() {
-    if (K.AI && K.AI.endpoint) return true;
-    if (K.AI && typeof K.AI.hasKey === "function" && K.AI.hasKey()) return true;
-    return !!(window.claude && typeof window.claude.complete === "function");
+    return !!(K.AI && typeof K.AI.anyText === "function" && K.AI.anyText());
   }
-  var AI_UNAVAILABLE_MSG = "AI 기능을 사용하려면 시작 화면의 '🔑 Google API 키' 칸에 본인의 키를 붙여넣고 저장해 주세요.\n키는 이 컴퓨터의 브라우저에만 저장됩니다. (발급: aistudio.google.com/apikey)";
+  var AI_UNAVAILABLE_MSG = "AI 기능을 사용하려면 시작 화면의 '🔑 Google API 키' 또는 '🔑 Claude API 키' 칸에 본인의 키를 붙여넣고 저장해 주세요.\n" +
+    "키는 이 컴퓨터의 브라우저에만 저장됩니다. (발급: aistudio.google.com/apikey · console.anthropic.com)";
 
-  /* ---------- Google API 키 입력 (localStorage 전용 · 외부 전송 없음) ---------- */
-  (function initApiKey() {
-    var input = document.getElementById("api-key-input");
-    if (!input || !K.AI || typeof K.AI.getKey !== "function") return;
-    var btnSave = document.getElementById("btn-key-save");
-    var btnClear = document.getElementById("btn-key-clear");
-    var status = document.getElementById("api-key-status");
+  /* ---------- 역할 라우팅 안내 (어떤 작업을 어느 AI가 맡는지) ---------- */
+  function routeSummary() {
+    var A = K.AI;
+    if (!A || !A.route) return "";
+    var groups = {};
+    Object.keys(A.ROLE_LABELS).forEach(function (role) {
+      var p = A.route(role);
+      var name = p === "claude" ? "Claude" : p === "gemini" ? "Gemini" : p === "host" ? "호스트 AI" : p === "edge" ? "서버" : null;
+      if (!name) return;
+      (groups[name] = groups[name] || []).push(A.ROLE_LABELS[role]);
+    });
+    var names = Object.keys(groups);
+    if (!names.length) return "";
+    var head = A.isMixed() ? "🔀 혼합 모드 — " : "🤖 ";
+    return head + names.map(function (n) { return n + ": " + groups[n].join("·"); }).join("  /  ");
+  }
+  function refreshAi() {
+    var el = document.getElementById("ai-route");
+    if (el) el.textContent = routeSummary();
+    refreshModelPicker();
+    try { document.dispatchEvent(new CustomEvent("kb-ai-change")); } catch (e) {}
+  }
 
+  /* ---------- AI 키 입력 (localStorage 전용 · 외부 전송 없음) ---------- */
+  function wireKey(o) {
+    var input = document.getElementById(o.input);
+    if (!input || !K.AI) return;
+    var btnSave = document.getElementById(o.save);
+    var btnClear = document.getElementById(o.clear);
+    var status = document.getElementById(o.status);
     function refresh() {
-      var has = K.AI.hasKey();
+      var has = o.has();
       btnClear.hidden = !has;
       status.textContent = has ? "✓ 저장됨" : "";
-      input.placeholder = has ? "키가 저장되어 있어요 — 바꾸려면 새 키 입력"
-                              : "AI 생성에 쓸 본인의 Google API 키 붙여넣기";
-      refreshModelPicker();
+      input.placeholder = has ? "키가 저장되어 있어요 — 바꾸려면 새 키 입력" : o.placeholder;
+      if (o.onRefresh) o.onRefresh(has);
+      refreshAi();
     }
     btnSave.addEventListener("click", function () {
       var v = input.value.trim();
       if (!v) { alert("저장할 API 키를 입력해 주세요."); return; }
-      K.AI.setKey(v);
+      o.set(v);
       input.value = "";
       refresh();
     });
     input.addEventListener("keydown", function (e) { if (e.key === "Enter") btnSave.click(); });
     btnClear.addEventListener("click", function () {
-      if (!confirm("저장된 Google API 키를 삭제할까요?")) return;
-      K.AI.setKey("");
+      if (!confirm("저장된 " + o.name + "를 삭제할까요?")) return;
+      o.set("");
       refresh();
     });
     refresh();
-  })();
+  }
+
+  /* Claude 모델 선택 (localStorage 기억) */
+  var claudeSel = document.getElementById("claude-model");
+  if (claudeSel && K.AI && Array.isArray(K.AI.claudeModels)) {
+    var savedClaude = null;
+    try { savedClaude = localStorage.getItem("kb-claude-model"); } catch (e) {}
+    var cids = K.AI.claudeModels.map(function (m) { return m.id; });
+    if (savedClaude && cids.indexOf(savedClaude) !== -1) K.AI.claudeModel = savedClaude;
+    claudeSel.innerHTML = K.AI.claudeModels.map(function (m) { return '<option value="' + m.id + '">' + m.label + "</option>"; }).join("");
+    claudeSel.value = K.AI.claudeModel;
+    claudeSel.addEventListener("change", function () {
+      K.AI.claudeModel = claudeSel.value;
+      try { localStorage.setItem("kb-claude-model", claudeSel.value); } catch (e) {}
+    });
+  }
+
+  if (K.AI && typeof K.AI.getKey === "function") {
+    wireKey({ input: "api-key-input", save: "btn-key-save", clear: "btn-key-clear", status: "api-key-status", name: "Google API 키",
+      placeholder: "AI 생성에 쓸 본인의 Google API 키 붙여넣기",
+      has: function () { return K.AI.hasKey(); }, set: function (v) { K.AI.setKey(v); } });
+    wireKey({ input: "claude-key-input", save: "btn-claude-save", clear: "btn-claude-clear", status: "claude-key-status", name: "Claude API 키",
+      placeholder: "AI 생성에 쓸 본인의 Claude API 키 붙여넣기 (sk-ant-…)",
+      has: function () { return K.AI.hasClaudeKey(); }, set: function (v) { K.AI.setClaudeKey(v); },
+      onRefresh: function (has) { if (claudeSel) claudeSel.hidden = !has; } });
+  }
 
   /* ---------- 소스 원고 만들기 (입력 → AI 원고 작성 → '소스 원고로 생성'으로 전달) ---------- */
   (function initWrite() {
@@ -167,6 +213,11 @@
     b.addEventListener("click", function () {
       document.querySelectorAll(".mode-btn").forEach(function (x) { x.classList.toggle("active", x === b); });
       var mode = b.dataset.mode;
+      if (mode === "course") {
+        showScreen("course");
+        if (K.courseUI) K.courseUI.open();
+        return;
+      }
       document.getElementById("panel-write").hidden = mode !== "write";
       document.getElementById("panel-upload").hidden = mode !== "upload";
       document.getElementById("panel-generate").hidden = mode !== "generate";
@@ -427,7 +478,7 @@
     });
   })();
 
-  var modelPickerWired = false;
+  var modelPickerWired; // 키 입력 초기화가 먼저 호출할 수 있어 초기값을 덮어쓰지 않는다
   function refreshModelPicker() {
     var sel = document.getElementById("gen-model");
     if (!sel) return;
@@ -478,6 +529,9 @@
       if (myToken !== genToken) return; // 취소됨
       document.getElementById("rdoc").value = out.docMd;
       document.getElementById("rdeck").value = out.deckMd;
+      document.getElementById("rtext").value = "";
+      document.getElementById("rtab-text").hidden = true;
+      selectReviewTab("rdoc");
       showScreen("review");
     }).catch(function (err) {
       if (myToken !== genToken) return;
@@ -531,13 +585,31 @@
   }
   wirePasteImage(document.getElementById("rdoc"));
   wirePasteImage(document.getElementById("rdeck"));
+  wirePasteImage(document.getElementById("rtext"));
   function activeReviewPane() {
     return document.querySelector(".rt-pane.active");
   }
+  function selectReviewTab(rt) {
+    document.querySelectorAll(".rtab").forEach(function (x) { x.classList.toggle("active", x.dataset.rt === rt); });
+    document.querySelectorAll(".rt-pane").forEach(function (p) { p.classList.toggle("active", p.id === rt); });
+  }
+  /* 다른 모듈(과정 설계)에서 생성한 MD를 검토 화면으로 넘긴다 */
+  K.app = {
+    showScreen: showScreen,
+    refreshAi: refreshAi,
+    openReview: function (o) {
+      document.getElementById("rdoc").value = o.docMd || "";
+      document.getElementById("rdeck").value = o.deckMd || "";
+      document.getElementById("rtext").value = o.textMd || "";
+      document.getElementById("rtab-text").hidden = !o.textMd;
+      selectReviewTab(o.tab || "rdoc");
+      showScreen("review");
+    }
+  };
   document.getElementById("btn-dl-active").addEventListener("click", function () {
     var pane = activeReviewPane();
-    var isDoc = pane.id === "rdoc";
-    download((isDoc ? "교수안" : "슬라이드 편성안") + ".md", pane.value);
+    var names = { rdoc: "교수안", rdeck: "슬라이드 편성안", rtext: "교재(교습안)" };
+    download((names[pane.id] || "문서") + ".md", pane.value);
   });
   document.getElementById("btn-build").addEventListener("click", function () {
     state.docText = document.getElementById("rdoc").value;

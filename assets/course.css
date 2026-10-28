@@ -1,0 +1,191 @@
+/* ============================================================
+   course.css — 과정 설계 화면 (블록 설계 · NCS 선정 · 문제은행 · 산출물)
+   styles.css 의 토큰(--ink, --maple, --line …)을 그대로 쓴다.
+   ============================================================ */
+.course { display: none; flex: 1; overflow-y: auto; padding: 24px 24px 60px; }
+.app[data-screen="course"] .course { display: block; }
+.course-wrap { width: min(1100px, 100%); margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.course-wrap.is-busy button:not([data-act="tab"]):not([data-act="pick-unit"]):not([data-act="clear-error"]) { pointer-events: none; opacity: .55; }
+
+/* 상단 */
+.cs-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cs-head h2 { font-family: var(--font-display); font-size: 26px; margin: 0; }
+.cs-spacer { flex: 1; }
+.cs-route { font-size: 12.5px; font-weight: 700; color: #3d2e8c; background: #efeaff; border-radius: 999px; padding: 6px 12px; }
+.cs-route.off { color: var(--ink-soft); background: rgba(32, 48, 74, .06); }
+.mode-btn.mode-course { color: #5b3fd0; }
+.mode-btn.mode-course.active { color: #5b3fd0; }
+
+/* 공통 카드 */
+.cs-card { background: #fff; border: 1px solid var(--line); border-radius: var(--r-md); padding: 18px 20px; box-shadow: var(--shadow-sm); }
+.cs-card h3 { margin: 0; font-size: 16px; }
+.cs-card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.cs-sub { font-size: 13px; color: var(--ink-soft); margin: 6px 0 12px; line-height: 1.6; }
+.cs-hint, .cs-foot { font-size: 12.5px; color: var(--ink-soft); margin: 10px 0 0; line-height: 1.6; }
+.cs-foot a { color: var(--maple-deep); font-weight: 700; }
+.cs-muted { color: var(--ink-soft); font-size: 12.5px; font-weight: 500; }
+.cs-lab { display: block; font-size: 12.5px; font-weight: 700; margin: 10px 0 6px; color: var(--ink); }
+.cs-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.cs-ok { color: var(--leaf-deep); font-size: 12.5px; font-weight: 700; }
+.cs-warn { color: #c2410c; font-size: 12.5px; font-weight: 700; }
+.cs-link { border: none; background: none; color: var(--maple-deep); font-weight: 700; font-size: 12.5px; cursor: pointer; padding: 4px 6px; }
+.cs-link:hover { text-decoration: underline; }
+.cs-x { border: none; background: rgba(32, 48, 74, .06); border-radius: 8px; width: 26px; height: 26px; cursor: pointer; color: var(--ink-soft); flex: none; }
+.cs-x:hover { background: #fde2e2; color: #c0392b; }
+.cs-danger { border: none; background: none; color: #c0392b; font-weight: 700; cursor: pointer; padding: 6px 10px; }
+.mono, .course textarea.mono { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; }
+.course input:not([type="checkbox"]), .course select, .course textarea {
+  font-family: var(--font-ui); font-size: 13.5px; color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; background: #fff;
+}
+.course textarea { width: 100%; resize: vertical; line-height: 1.55; }
+.course input:focus, .course select:focus, .course textarea:focus { outline: none; border-color: var(--maple); box-shadow: 0 0 0 3px rgba(255, 122, 47, .14); }
+.cs-num { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; white-space: nowrap; }
+.cs-num input { width: 74px; }
+
+/* 진행·오류 */
+.cs-progress { display: flex; align-items: center; gap: 10px; background: #fff7ef; border: 1px solid #ffd9c2; border-radius: 12px; padding: 10px 14px; font-size: 13.5px; font-weight: 600; }
+.cs-spin { display: inline-block; animation: spin 2.4s linear infinite; }
+.cs-pbar { flex: 1; min-width: 120px; height: 8px; background: #ffe6d5; border-radius: 99px; overflow: hidden; }
+.cs-pbar i { display: block; height: 100%; background: var(--maple); border-radius: 99px; transition: width .3s; }
+.cs-error { background: #fdeeee; border: 1px solid #f3c6c6; color: #a12b2b; border-radius: 12px; padding: 10px 14px; font-size: 13.5px; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .cs-spin { animation: none; } }
+
+/* 주제 입력 */
+.cs-topic { min-height: 170px; font-size: 14px; }
+.cs-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 13px; }
+.cs-row label { display: flex; align-items: center; gap: 6px; }
+.cs-row input[type="number"] { width: 80px; }
+.cs-row input#cs-tool { width: 260px; }
+
+/* 요약·시간 막대 */
+.cs-sum-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cs-title { flex: 1; min-width: 240px; font-size: 18px !important; font-weight: 800; }
+.cs-total { font-size: 13px; font-weight: 800; padding: 6px 12px; border-radius: 999px; }
+.cs-total.ok { background: #e6f6ec; color: var(--leaf-deep); }
+.cs-total.warn { background: #fff1e6; color: #c2410c; }
+.cs-goal { font-size: 13.5px; }
+.cs-timebar { display: flex; gap: 3px; margin: 14px 0 10px; height: 34px; }
+.cs-seg { border: none; border-radius: 8px; background: #dcecfa; color: #1d4f7a; font-size: 12px; font-weight: 800; cursor: pointer; min-width: 0; overflow: hidden; white-space: nowrap; }
+.cs-seg:nth-child(even) { background: #e7e1fb; color: #4a37a6; }
+.cs-seg.on { background: var(--maple); color: #fff; }
+.cs-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cs-chip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.cs-chip b { color: var(--maple-deep); }
+.cs-chip i { font-style: normal; font-size: 12px; }
+.cs-chip-h { color: var(--ink-soft); font-weight: 700; font-size: 12px; }
+.cs-chip.on { border-color: var(--maple); background: #fff3ec; box-shadow: 0 0 0 2px rgba(255, 122, 47, .15); }
+
+/* 탭 */
+.cs-tabs { display: flex; gap: 6px; background: rgba(32, 48, 74, .06); padding: 5px; border-radius: 999px; align-self: flex-start; flex-wrap: wrap; }
+.cs-tab { border: none; background: transparent; padding: 9px 18px; border-radius: 999px; font-weight: 800; font-size: 13.5px; color: var(--ink-soft); cursor: pointer; }
+.cs-tab.on { background: #fff; color: var(--maple-deep); box-shadow: var(--shadow-sm); }
+
+/* 시간표 */
+.cs-tt summary { cursor: pointer; font-weight: 800; font-size: 14px; }
+.cs-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+.cs-table th, .cs-table td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+.cs-table thead th { background: #f6f4ee; font-size: 12.5px; }
+.cs-table tr.on td { background: #fff7ef; }
+.cs-table tfoot td { font-weight: 800; }
+
+/* 블록 */
+.cs-unit-title { flex: 1; min-width: 200px; font-weight: 800; }
+.cs-block { border: 1px solid var(--line); border-left: 4px solid #7c6ff0; border-radius: 14px; padding: 12px 14px; margin-top: 12px; background: #fcfbff; }
+.cs-block-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cs-block-no { font-size: 12px; font-weight: 800; color: #5b3fd0; background: #ece8ff; border-radius: 6px; padding: 3px 8px; }
+.cs-block-title { flex: 1; min-width: 200px; font-weight: 700; }
+.cs-time { font-size: 12.5px; font-weight: 800; color: #5b3fd0; }
+.cs-block-grid { display: grid; grid-template-columns: 1fr 1.15fr; gap: 16px; }
+@media (max-width: 860px) { .cs-block-grid { grid-template-columns: 1fr; } }
+.cs-flow { width: 100%; border-collapse: collapse; }
+.cs-flow td { padding: 3px 3px; }
+.cs-flow select { width: 74px; }
+.cs-flow input:not([type="number"]) { width: 100%; }
+.cs-flow .cs-num input { width: 64px; }
+.cs-flow-foot { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.cs-lint { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; color: #b45309; line-height: 1.55; }
+.cs-done { margin-top: 10px; font-size: 12.5px; font-weight: 700; color: var(--leaf-deep); }
+
+/* NCS (참고: 선정 카드 + 추천 목록) */
+.cs-sels { display: flex; flex-direction: column; gap: 6px; }
+.cs-sel { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 13.5px; font-weight: 600; }
+.cs-sel .cs-x { margin-left: auto; }
+.cs-ncs { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; padding: 14px 4px; border-top: 1px solid var(--line); cursor: pointer; }
+.cs-ncs:first-of-type { border-top: none; }
+.cs-ncs input[type="checkbox"] { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--maple); }
+.cs-ncs.on { background: #fffaf5; }
+.cs-ncs-name { font-weight: 800; font-size: 14.5px; margin-bottom: 6px; }
+.cs-ncs-dl { display: grid; grid-template-columns: 72px 1fr; gap: 3px 10px; margin: 0; font-size: 12.5px; }
+.cs-ncs-dl dt { color: var(--ink-soft); }
+.cs-ncs-dl dd { margin: 0; }
+.cs-ncs-obj { margin-top: 6px; font-size: 12.5px; font-weight: 800; color: #2f4fa8; }
+.cs-ncs-why { margin: 6px 0 0; font-size: 13px; line-height: 1.6; }
+.cs-ncs-duty { margin: 6px 0 0; font-size: 12px; color: var(--ink-soft); }
+.cs-ncs-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 110px; }
+.cs-badge { font-size: 11.5px; font-weight: 800; border-radius: 999px; padding: 3px 9px; background: rgba(32, 48, 74, .07); color: var(--ink); }
+.cs-badge.ref { background: #e3f5ea; color: #1f7a45; }
+.cs-badge.cross { background: #e6ecff; color: #2f4fa8; }
+.cs-meter { width: 72px; height: 6px; background: #e8ecf3; border-radius: 99px; overflow: hidden; }
+.cs-meter i { display: block; height: 100%; background: #2f4fa8; }
+.cs-score { font-size: 12.5px; color: var(--ink-soft); }
+.cs-score b { color: #2f4fa8; }
+.cs-search { flex: 1; min-width: 240px; }
+
+/* 문제은행 */
+.cs-dist { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-size: 13px; }
+.cs-dist th, .cs-dist td { padding: 9px 12px; border-bottom: 1px solid var(--line); }
+.cs-dist thead th { background: #f4f6fa; font-size: 12px; text-align: center; }
+.cs-dist thead th:first-child { text-align: left; }
+.cs-dist th small { display: block; font-weight: 500; color: var(--ink-soft); margin-top: 3px; }
+.cs-dist td:not(:first-child) { text-align: center; font-family: ui-monospace, Consolas, monospace; }
+.cs-dist td.zero { color: #b8c0cc; }
+.cs-dist tfoot td { background: #f4f6fa; font-weight: 800; border-bottom: none; }
+.cs-dist tfoot td.met { color: var(--leaf-deep); }
+.cs-band { display: inline-block; font-size: 11.5px; font-weight: 800; color: #fff; border-radius: 6px; padding: 2px 7px; }
+.b-L1 { background: #2f4fa8; } .b-L2 { background: #6d3fc4; } .b-L3 { background: #b9770e; } .b-L4 { background: #2f7a55; }
+.cs-bands { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 8px; }
+@media (max-width: 760px) { .cs-bands { grid-template-columns: 1fr; } }
+.cs-bandcard { border: 1px solid var(--line); border-radius: 12px; padding: 12px; font-size: 13px; }
+.cs-bandcard p { margin: 6px 0; color: var(--ink-soft); line-height: 1.55; }
+.cs-bandcard small { font-weight: 800; }
+.cs-bandcard.l4 { border-style: dashed; background: #f7f8fa; }
+.cs-qgen { background: #fbfbfd; border-style: dashed; }
+.cs-q-form { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-top: 8px; }
+.cs-q-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; font-weight: 700; min-width: 140px; }
+.cs-q-form label select { min-width: 160px; max-width: 360px; }
+.cs-check { display: inline-flex !important; flex-direction: row !important; align-items: center; gap: 6px; font-weight: 600 !important; font-size: 13px; }
+.cs-fchip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 5px 12px; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.cs-fchip.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.cs-q { border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-top: 12px; }
+.cs-q.editing { border-color: var(--maple); box-shadow: 0 0 0 3px rgba(255, 122, 47, .12); }
+.cs-q-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; font-size: 13px; }
+.cs-qstat { font-size: 12px; font-weight: 800; border-radius: 999px; padding: 3px 10px; }
+.cs-qstat.ok { background: #e3f5ea; color: #1f7a45; }
+.cs-qstat.bad { background: #fff1e6; color: #c2410c; cursor: help; }
+.cs-q-stem { font-size: 14px; line-height: 1.65; white-space: pre-wrap; }
+.cs-choices { margin: 8px 0; padding-left: 22px; font-size: 13.5px; line-height: 1.8; }
+.cs-choices li.ok { color: var(--leaf-deep); font-weight: 800; }
+.cs-ans { font-size: 13.5px; }
+.cs-code { background: #f3f4f7; border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+.cs-code > div { font-size: 12px; font-weight: 800; color: var(--ink-soft); margin-bottom: 4px; }
+.cs-code pre { margin: 0; white-space: pre-wrap; font-size: 12.5px; }
+.cs-rub { border-collapse: collapse; font-size: 13px; margin: 8px 0; min-width: 320px; }
+.cs-rub th, .cs-rub td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+.cs-rub thead th, .cs-rub tfoot td { background: #f6f4ee; font-weight: 800; }
+.cs-expl { font-size: 12.5px; color: var(--ink-soft); line-height: 1.6; margin: 8px 0 0; }
+.cs-q-act { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+.cs-chrow { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+.cs-chrow input:not([type="checkbox"]) { flex: 1; }
+.cs-chrow .cs-pts { flex: none; width: 70px; }
+
+/* 산출물 */
+.cs-out { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-top: 10px; }
+.cs-out-ic { font-size: 26px; }
+.cs-out-main { flex: 1; }
+.cs-out-main p { margin: 3px 0 0; font-size: 12.5px; color: var(--ink-soft); line-height: 1.55; }
+
+/* 시작 화면: AI 키 두 줄 + 라우팅 안내 */
+#claude-key-row { margin-top: 10px; }
+.key-model { font-family: var(--font-ui); font-size: 12.5px; border: 1px solid var(--line); border-radius: 999px; padding: 7px 12px; background: #fff; }
+.ai-route { margin: 8px auto 0; font-size: 12.5px; font-weight: 700; color: #3d2e8c; max-width: 720px; }
+.ai-route:empty { display: none; }

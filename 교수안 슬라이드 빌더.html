@@ -10,6 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Jua&family=Gothic+A1:wght@400;500;700;800;900&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="assets/styles.css" />
 <link rel="stylesheet" href="assets/slides.css" />
+<link rel="stylesheet" href="assets/course.css" />
 </head>
 <body>
 <div class="app" id="app">
@@ -39,6 +40,7 @@
         <button class="mode-btn active" data-mode="write">📝 소스 원고 만들기</button>
         <button class="mode-btn" data-mode="generate">✨ 소스 원고로 생성</button>
         <button class="mode-btn" data-mode="upload">📂 완성된 MD 올리기</button>
+        <button class="mode-btn mode-course" data-mode="course" title="주제를 넣으면 40시간 기준 단원·블록 교안, NCS 분류코드, 문제은행을 만듭니다">🧩 과정 설계(40시간)</button>
       </div>
 
       <!-- 모드 0: 소스 원고 만들기 (입력 → AI가 원고 작성) -->
@@ -123,7 +125,7 @@
         <p class="intro-hint">원고를 섹션 단위로 나눠 차례로 생성합니다. 분량에 따라 1~3분 걸릴 수 있어요. 생성된 MD는 <b>검토·편집·다운로드</b> 후 빌드합니다.</p>
       </div>
 
-      <!-- 공통: Google API 키 (BYOK) — 이 브라우저의 localStorage에만 저장, 외부 전송 없음 -->
+      <!-- 공통: AI 키 (BYOK) — 이 브라우저의 localStorage에만 저장, 외부 전송 없음 -->
       <div class="api-key-row" id="api-key-row">
         <label for="api-key-input">🔑 Google API 키</label>
         <input type="password" id="api-key-input" autocomplete="off" spellcheck="false"
@@ -132,8 +134,18 @@
         <button class="sample-dl-btn" id="btn-key-clear" hidden>삭제</button>
         <span class="api-key-status" id="api-key-status"></span>
       </div>
-      <p class="intro-hint api-key-hint">키는 <b>이 컴퓨터의 브라우저에만 저장</b>되며 Google API 호출에만 사용됩니다.
-        키가 없다면 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a>에서 무료로 발급받을 수 있어요.</p>
+      <div class="api-key-row" id="claude-key-row">
+        <label for="claude-key-input">🔑 Claude API 키</label>
+        <input type="password" id="claude-key-input" autocomplete="off" spellcheck="false"
+               placeholder="AI 생성에 쓸 본인의 Claude API 키 붙여넣기 (sk-ant-…)" />
+        <button class="sample-dl-btn" id="btn-claude-save">저장</button>
+        <button class="sample-dl-btn" id="btn-claude-clear" hidden>삭제</button>
+        <span class="api-key-status" id="claude-key-status"></span>
+        <select id="claude-model" class="key-model" title="Claude 모델" hidden></select>
+      </div>
+      <p class="intro-hint api-key-hint">키는 <b>이 컴퓨터의 브라우저에만 저장</b>되며 각 AI 호출에만 사용됩니다. 둘 중 하나만 있어도 되고, <b>둘 다 넣으면 장점별로 나눠 씁니다</b>(Claude: 구조 설계·본문·교차 검수 / Gemini: 슬라이드 요약·문항 초안·삽화).
+        발급: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a> · <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Claude Console</a></p>
+      <p class="ai-route" id="ai-route"></p>
 
       <!-- 공통 하단: 샘플 내려받기 · 이어서 편집 — 모드 토글과 무관하게 항상 노출 -->
       <div class="sample-dl">
@@ -150,6 +162,11 @@
 
       <p class="intro-hint">둘 중 하나만 올려도 됩니다. 같은 구조의 <code>--- 프론트매터 ---</code> + <code>### 슬라이드 N - 제목</code> 형식이면 어떤 차시든 동작합니다.</p>
     </div>
+  </section>
+
+  <!-- 과정 설계 화면 (주제 → 40시간 단원·학습모듈 블록 · NCS · 문제은행 · 산출물) -->
+  <section class="course" id="course">
+    <div class="course-wrap" id="course-root"></div>
   </section>
 
   <!-- 생성 진행 화면 -->
@@ -170,6 +187,7 @@
       <div class="review-tabs">
         <button class="rtab active" data-rt="rdoc">📖 교수안.md</button>
         <button class="rtab" data-rt="rdeck">🎬 슬라이드 편성안.md</button>
+        <button class="rtab" data-rt="rtext" id="rtab-text" hidden>📘 교재(교습안).md</button>
       </div>
       <div class="spacer"></div>
       <button class="btn btn-ghost" id="btn-dl-active">⤓ 이 MD 다운로드</button>
@@ -180,6 +198,7 @@
     <div class="review-panes">
       <textarea class="review-text rt-pane active" id="rdoc" spellcheck="false"></textarea>
       <textarea class="review-text rt-pane" id="rdeck" spellcheck="false"></textarea>
+      <textarea class="review-text rt-pane" id="rtext" spellcheck="false"></textarea>
     </div>
   </section>
 
@@ -265,10 +284,15 @@
 <script src="assets/layouts.js"></script>
 <script src="assets/tutorial.js"></script>
 <script src="assets/ai-config.js"></script>
+<script src="assets/ai-client.js"></script>
 <script src="assets/generate.js"></script>
+<script src="assets/ncs-catalog.js"></script>
+<script src="assets/course-model.js"></script>
+<script src="assets/course-ai.js"></script>
 <script src="assets/export.js"></script>
 <script src="assets/ref-images.js"></script>
 <script src="assets/sample-data.js"></script>
 <script src="assets/main.js"></script>
+<script src="assets/course-ui.js"></script>
 </body>
 </html>

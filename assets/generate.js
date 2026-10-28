@@ -61,103 +61,11 @@
     return m ? parseInt(m[1], 10) : 0;
   }
 
-  /* ---------- AI 호출 (엣지 펑션 → 사용자 Google API 키 → Claude 폴백 · 재시도 포함) ---------- */
-  function backend() {
-    var ai = window.KBuilder && window.KBuilder.AI;
-    if (ai && ai.endpoint) return "edge";
-    if (ai && typeof ai.hasKey === "function" && ai.hasKey()) return "gemini";
-    if (window.claude && typeof window.claude.complete === "function") return "claude";
-    return null;
-  }
-
-  /* 타임아웃 포함 fetch — 엣지 지연 시 진행 화면·스피너가 무한 대기하지 않게 */
-  function fetchWithTimeout(url, opts, ms) {
-    if (typeof AbortController === "undefined") return fetch(url, opts);
-    var ac = new AbortController();
-    var timer = setTimeout(function () { ac.abort(); }, ms);
-    var merged = {};
-    for (var k in opts) merged[k] = opts[k];
-    merged.signal = ac.signal;
-    return fetch(url, merged).then(
-      function (res) { clearTimeout(timer); return res; },
-      function (err) {
-        clearTimeout(timer);
-        if (err && err.name === "AbortError") throw new Error("응답 시간이 초과됐어요. 잠시 후 다시 시도해 주세요.");
-        throw err;
-      }
-    );
-  }
-
-  /* 엣지 펑션 호출: POST {prompt, model} → {text} (원시 Gemini 응답도 허용) */
-  function callEdge(prompt) {
-    var ai = window.KBuilder.AI;
-    return fetchWithTimeout(ai.endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: prompt, model: ai.model })
-    }, 90000).then(function (res) {
-      return res.text().then(function (raw) {
-        var data = {};
-        try { data = raw ? JSON.parse(raw) : {}; } catch (e) { data = {}; }
-        if (!res.ok || data.error) {
-          throw new Error(data.error || ("AI 서버 오류 (HTTP " + res.status + ")"));
-        }
-        var text = data.text;
-        if (text == null && data.candidates && data.candidates[0] && data.candidates[0].content) {
-          text = (data.candidates[0].content.parts || []).map(function (p) { return p.text || ""; }).join("");
-        }
-        if (!text) throw new Error("AI 응답이 비어 있습니다.");
-        return text;
-      });
-    });
-  }
-
-  /* Gemini API 직접 호출 (사용자 로컬 키) — 키는 URL이 아닌 헤더로만 전송 */
-  function geminiParse(raw, res, emptyMsg) {
-    var data = {};
-    try { data = raw ? JSON.parse(raw) : {}; } catch (e) { data = {}; }
-    if (!res.ok || data.error) {
-      var msg = (data.error && (data.error.message || data.error)) || ("Gemini API 오류 (HTTP " + res.status + ")");
-      if (res.status === 400 && /API key/i.test(String(msg))) msg = "Google API 키가 올바르지 않습니다. 키를 확인해 주세요.";
-      if (res.status === 429) msg = "Gemini API 사용량 한도에 도달했어요. 잠시 후 다시 시도해 주세요.";
-      throw new Error(msg);
-    }
-    var parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
-    if (!parts.length) throw new Error(emptyMsg);
-    return parts;
-  }
-
-  function callGemini(prompt) {
-    var ai = window.KBuilder.AI;
-    var url = ai.apiBase + "/models/" + encodeURIComponent(ai.model) + ":generateContent";
-    return fetchWithTimeout(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": ai.getKey() },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-    }, 90000).then(function (res) {
-      return res.text().then(function (raw) {
-        var parts = geminiParse(raw, res, "AI 응답이 비어 있습니다.");
-        var text = parts.map(function (p) { return p.text || ""; }).join("");
-        if (!text.trim()) throw new Error("AI 응답이 비어 있습니다.");
-        return text;
-      });
-    });
-  }
-
-  function call(prompt, tries) {
-    tries = tries == null ? 2 : tries;
-    var kind = backend();
-    if (!kind) return Promise.reject(new Error("AI 백엔드가 설정되지 않았습니다. 시작 화면에서 Google API 키를 저장하면 사용할 수 있어요."));
-    var p = kind === "edge" ? callEdge(prompt)
-          : kind === "gemini" ? callGemini(prompt)
-          : window.claude.complete(prompt);
-    return p.catch(function (e) {
-      if (tries > 0) {
-        return new Promise(function (res) { setTimeout(res, 1200); })
-          .then(function () { return call(prompt, tries - 1); });
-      }
-      throw e;
-    });
+  /* ---------- AI 호출 — 공급자 선택·재시도는 ai-client.js(K.ai)가 담당 ---------- */
+  function call(prompt, role) {
+    var ai = window.KBuilder && window.KBuilder.ai;
+    if (!ai) return Promise.reject(new Error("AI 모듈(ai-client.js)이 로드되지 않았습니다."));
+    return ai.call(prompt, { role: role || "write" });
   }
 
   function truncate(s, n) { return s.length > n ? s.slice(0, n) + "…" : s; }
@@ -177,7 +85,7 @@
       "[유의사항]\n- (강사가 유의할 점 3~4개)\n\n" +
       "[강의 제목/도입]\n" + truncate(intro, 1200) + "\n\n[목차]\n" + toc +
       (totalMin ? "\n\n(참고: 전체 약 " + totalMin + "분)" : "");
-    return call(prompt).then(parseMeta);
+    return call(prompt, "plan").then(parseMeta);
   }
 
   function parseMeta(text) {
@@ -234,7 +142,7 @@
       "- 이미지/시각: (어울리는 이미지 한 줄 제안)\n" +
       "- 핵심 메시지: (이 슬라이드의 한 줄 메시지)\n\n" +
       "[섹션 제목] " + sec.title + "\n[원고]\n" + truncate(sec.text.trim(), 2400);
-    return call(prompt).then(function (text) { return parseSection(text, sec); });
+    return call(prompt, "write").then(function (text) { return parseSection(text, sec); });
   }
 
   function parseSection(text, sec) {
@@ -427,55 +335,6 @@
       });
   }
 
-  /* ---------- 이미지 생성 (엣지 펑션 → 사용자 Google API 키로 Gemini 이미지 모델 직접 호출) ---------- */
-  function genImageEdge(prompt) {
-    var ai = window.KBuilder.AI;
-    return fetchWithTimeout(ai.imageEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: prompt, model: ai.imageModel })
-    }, 120000).then(function (res) {
-      return res.text().then(function (raw) {
-        var data = {};
-        try { data = raw ? JSON.parse(raw) : {}; } catch (e) { data = {}; }
-        if (!res.ok || data.error) throw new Error(data.error || ("이미지 서버 오류 (HTTP " + res.status + ")"));
-        if (!data.image) throw new Error("이미지 응답이 비어 있습니다.");
-        return data.image; // data:image/...;base64,...
-      });
-    });
-  }
-
-  function genImageGemini(prompt) {
-    var ai = window.KBuilder.AI;
-    var url = ai.apiBase + "/models/" + encodeURIComponent(ai.imageModel) + ":generateContent";
-    return fetchWithTimeout(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": ai.getKey() },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseModalities: ["TEXT", "IMAGE"] }
-      })
-    }, 120000).then(function (res) {
-      return res.text().then(function (raw) {
-        var parts = geminiParse(raw, res, "이미지 응답이 비어 있습니다.");
-        for (var i = 0; i < parts.length; i++) {
-          var inline = parts[i].inlineData || parts[i].inline_data;
-          if (inline && inline.data) {
-            return "data:" + (inline.mimeType || inline.mime_type || "image/png") + ";base64," + inline.data;
-          }
-        }
-        throw new Error("이미지 응답이 비어 있습니다.");
-      });
-    });
-  }
-
-  function genImage(prompt) {
-    var ai = (window.KBuilder && window.KBuilder.AI) || {};
-    if (ai.imageEndpoint) return genImageEdge(prompt);
-    if (typeof ai.hasKey === "function" && ai.hasKey()) return genImageGemini(prompt);
-    return Promise.reject(new Error("이미지 생성 백엔드가 설정되지 않았습니다. 시작 화면에서 Google API 키를 저장하면 사용할 수 있어요."));
-  }
-
   /* ---------- 이미지 생성 추천 프롬프트 ---------- */
   /* 슬롯의 시각 제안 + 슬라이드 제목 + 강의 주제 + 일관 아트 스타일을 묶어
      바로 생성에 쓸 수 있는 한국어 프롬프트를 만든다. (image-slot _aiGen에서 프리필) */
@@ -560,7 +419,7 @@
     }
 
     prog(0, 1, "개요 설계 중…");
-    return call(outlinePrompt).then(function (outText) {
+    return call(outlinePrompt, "plan").then(function (outText) {
       var outline = parseOutline(stripFence(outText));
       if (!outline.sections.length) throw new Error("개요 생성에 실패했습니다. 다시 시도해 주세요.");
       // 시간 보정: 합이 360이 아니면 비례 배분
@@ -578,7 +437,7 @@
       outline.sections.forEach(function (sec, i) {
         chain = chain.then(function () {
           prog(i, total, "섹션 " + (i + 1) + "/" + total + " 작성 중… (" + sec.title + ")");
-          return call(sectionPrompt(outline, sec, i, total)).then(function (t) {
+          return call(sectionPrompt(outline, sec, i, total), "write").then(function (t) {
             var md = stripFence(t);
             if (!/^##\s/.test(md)) md = "## " + sec.title + " (" + sec.time + "분)\n\n" + md;
             results.push(md);
@@ -597,7 +456,6 @@
   window.KBuilder = window.KBuilder || {};
   window.KBuilder.generateFromSource = generateFromSource;
   window.KBuilder.writeSource = writeSource;       // 소스 원고 만들기 모드에서 사용
-  window.KBuilder.genImage = genImage;            // 이미지 슬롯 AI 생성에서 사용
   window.KBuilder.recommendImagePrompt = recommendImagePrompt; // 슬롯 추천 프롬프트
   window.KBuilder.splitSections = splitSections; // 디버그용
 })();
