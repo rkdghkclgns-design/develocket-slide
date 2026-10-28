@@ -57,7 +57,17 @@
   var dzSource = document.getElementById("dz-source");
   var btnGenerate = document.getElementById("btn-generate");
   var srcText = document.getElementById("source-text");
-  function refreshGenerate() { btnGenerate.disabled = !(state.sourceText && state.sourceText.trim()); }
+  function refreshGenerate() {
+    btnGenerate.disabled = !(state.sourceText && state.sourceText.trim());
+    // 부(# N부. 제목)로 나뉜 원고면 부마다 따로 생성한다고 알린다
+    var hint = document.getElementById("gen-parts-hint");
+    var split = K.parts && state.sourceText ? K.parts.splitParts(state.sourceText) : null;
+    if (hint) {
+      hint.hidden = !split;
+      if (split) hint.textContent = "🧩 " + split.parts.length + "개 부 감지 — 부마다 교수안·슬라이드를 따로 만들고, 결과 화면의 드롭다운으로 오갈 수 있습니다: " +
+        split.parts.map(function (p) { return p.label; }).join(" · ");
+    }
+  }
   wireZone(dzSource, document.getElementById("file-source"), function (name, text) {
     state.sourceText = text;
     if (srcText) srcText.value = text;   // 올린 파일 내용을 붙여넣기 칸에 채워 편집 가능하게
@@ -160,8 +170,25 @@
     var out = document.getElementById("write-out");
     var result = document.getElementById("write-result");
     var busy = false;
-    function refresh() { btnWrite.disabled = busy || !brief.value.trim(); }
-    brief.addEventListener("input", refresh);
+    var partsBox = document.getElementById("write-parts");
+    var hoursInput = document.getElementById("write-hours");
+    var IDLE_HINT = status.textContent;
+    /* "주제 입력: …" + 하위 주제 목록이면 부(部)별 작성 안내와 시간 분할을 보여 준다 */
+    function topicList() { return K.parts ? K.parts.detectTopicList(brief.value) : null; }
+    /* updateStatus: 입력이 바뀌었을 때만 안내 문구를 갱신한다 (작업 결과 메시지를 덮지 않도록) */
+    function refreshParts(updateStatus) {
+      var t = topicList();
+      if (partsBox) partsBox.hidden = !t;
+      if (!t) { if (!busy && updateStatus) status.textContent = IDLE_HINT; return; }
+      var total = Math.max(t.units.length, Math.round(Number(hoursInput.value) || 40));
+      var hrs = K.parts.splitHours(t.units.length, total);
+      document.getElementById("write-parts-n").textContent = t.units.length;
+      document.getElementById("write-parts-split").textContent = "(" + hrs.map(function (h, i) { return (i + 1) + "부 " + h + "h"; }).join(" · ") + ")";
+      if (!busy && updateStatus) status.textContent = "'" + t.title + "' 과정을 " + t.units.length + "개 부로 나눠, 부마다 원고를 쓴 뒤 하나의 소스 원고로 합칩니다. 다음 단계에서 부마다 교수안·슬라이드가 따로 만들어집니다.";
+    }
+    function refresh(updateStatus) { btnWrite.disabled = busy || !brief.value.trim(); refreshParts(updateStatus === true); }
+    brief.addEventListener("input", function () { refresh(true); });
+    if (hoursInput) hoursInput.addEventListener("input", function () { refreshParts(true); });
 
     /* 참고 MD 업로드 → 입력칸에 채워 확장 재료로 사용 */
     var dzWrite = document.getElementById("dz-write");
@@ -169,7 +196,7 @@
       var cur = brief.value.trim();
       brief.value = cur ? cur + "\n\n" + text : text;
       markFilled(dzWrite, name);
-      refresh();
+      refresh(true);
     });
 
     btnWrite.addEventListener("click", function () {
@@ -178,17 +205,25 @@
         alert(AI_UNAVAILABLE_MSG);
         return;
       }
+      var topic = topicList();
       busy = true; refresh();
       btnWrite.textContent = "🍁 작성 중…";
-      status.textContent = "AI가 소스 원고를 작성하고 있어요. 분량에 따라 1~2분 걸릴 수 있습니다…";
-      K.writeSource(brief.value, function (done, total, label) {
-        if (label) status.textContent = "🍁 " + label;
-      }).then(function (md) {
+      status.textContent = topic
+        ? "AI가 " + topic.units.length + "개 부의 소스 원고를 차례로 작성하고 있어요. 부마다 1~2분씩 걸립니다…"
+        : "AI가 소스 원고를 작성하고 있어요. 분량에 따라 1~2분 걸릴 수 있습니다…";
+      var onProg = function (done, total, label) { if (label) status.textContent = "🍁 " + label; };
+      var job = topic
+        ? K.parts.writeSourceParts(brief.value, onProg, { totalHours: Number(hoursInput.value) || 40 })
+        : K.writeSource(brief.value, onProg);
+      job.then(function (md) {
         result.value = md;
         out.hidden = false;
-        status.textContent = "작성 완료! 아래에서 수정한 뒤 '소스 원고로 생성 →' 버튼으로 넘기세요.";
+        status.textContent = "작성 완료! 아래에서 수정한 뒤 '소스 원고로 생성 →' 버튼으로 넘기세요." +
+          (topic ? " (" + topic.units.length + "개 부 — '# N부. 제목' 머리글로 구분됩니다)" : "");
       }).catch(function (err) {
-        status.textContent = "⚠ " + ((err && err.message) || "원고 작성에 실패했습니다. 다시 시도해 주세요.");
+        if (err && err.partial) { result.value = err.partial; out.hidden = false; }
+        status.textContent = "⚠ " + ((err && err.message) || "원고 작성에 실패했습니다. 다시 시도해 주세요.") +
+          (err && err.partial ? " — 완료된 " + err.partialCount + "개 부까지는 아래에 남겨 두었습니다." : "");
       }).then(function () {
         busy = false; btnWrite.textContent = "✨ AI로 원고 작성"; refresh();
       });
@@ -284,6 +319,7 @@
       alert("지원하지 않는 HTML입니다. 이 빌더에서 내보낸 슬라이드 HTML 파일을 선택해 주세요.");
       return;
     }
+    setParts(null); // 불러온 HTML 은 한 부(덱) 단위
     // 내장 소스(교수안·편성안 MD·참고이미지) 복원 — 있으면 한번에 되살려 수정 가능하게 한다
     var src = readEmbeddedSource(doc); // 세니타이즈 전에 읽는다(DOMParser는 스크립트를 실행하지 않음)
     sanitizeImported(stage);
@@ -325,11 +361,77 @@
     if (K.editor) K.editor.setEdit(true); // 불러오기 성공 → 바로 편집 가능
   }
 
+  /* ---------- 부(部) 단위 결과 — 하위 주제마다 교수안·슬라이드, 드롭다운으로 이동 ----------
+   * parts[i] = { label, docMd, deckMd, textMd?, deckHtml(편집한 슬라이드 스냅숏), builtHtml(빌드 직후 원본) } */
+  var parts = null, partIdx = 0;
+  var reviewPartSel = document.getElementById("review-part");
+  var resultPartSel = document.getElementById("part-sel");
+
+  function renderPartSelects() {
+    [reviewPartSel, resultPartSel].forEach(function (sel) {
+      if (!sel) return;
+      sel.hidden = !parts;
+      sel.innerHTML = parts ? parts.map(function (p, i) {
+        return '<option value="' + i + '">' + K.escapeHtml(p.label || ((i + 1) + "부. " + (p.title || ""))) + "</option>";
+      }).join("") : "";
+      if (parts) sel.value = String(partIdx);
+    });
+  }
+  function setParts(list, idx) {
+    parts = list && list.length > 1 ? list.map(function (p) {
+      return { label: p.label, title: p.title, docMd: p.docMd || "", deckMd: p.deckMd || "", textMd: p.textMd || "", deckHtml: null, builtHtml: null };
+    }) : null;
+    partIdx = parts ? Math.max(0, Math.min(idx || 0, parts.length - 1)) : 0;
+    renderPartSelects();
+  }
+  function loadReviewPart() {
+    var p = parts[partIdx];
+    document.getElementById("rdoc").value = p.docMd;
+    document.getElementById("rdeck").value = p.deckMd;
+    document.getElementById("rtext").value = p.textMd || "";
+    document.getElementById("rtab-text").hidden = !p.textMd;
+    if (!p.textMd && activeReviewPane() && activeReviewPane().id === "rtext") selectReviewTab("rdoc");
+  }
+  function saveReviewPart() {
+    if (!parts) return;
+    var p = parts[partIdx];
+    var doc = document.getElementById("rdoc").value, deck = document.getElementById("rdeck").value;
+    if (doc !== p.docMd || deck !== p.deckMd) p.deckHtml = null; // MD를 고쳤으면 슬라이드는 MD에서 다시 만든다
+    p.docMd = doc; p.deckMd = deck;
+    if (p.textMd) p.textMd = document.getElementById("rtext").value;
+  }
+  /* 결과 화면에서 다른 부로 넘어가기 전, 슬라이드에서 편집한 내용을 보관한다 */
+  function snapshotDeck() {
+    if (!parts || !deckCtrl || !deckCtrl.stageInner) return;
+    if (K.editor) K.editor.setEdit(false);
+    var html = deckCtrl.stageInner.innerHTML;
+    var p = parts[partIdx];
+    if (html !== p.builtHtml) p.deckHtml = html;
+  }
+  function showPart(i) {
+    partIdx = i;
+    var p = parts[i];
+    state.docText = p.docMd; state.deckText = p.deckMd;
+    loadReviewPart();
+    renderPartSelects();
+  }
+  if (reviewPartSel) reviewPartSel.addEventListener("change", function () {
+    saveReviewPart();
+    showPart(Number(reviewPartSel.value));
+  });
+  if (resultPartSel) resultPartSel.addEventListener("change", function () {
+    var active = document.querySelector("#tabbar-tabs .tab.active");
+    snapshotDeck();
+    showPart(Number(resultPartSel.value));
+    convert(active ? active.dataset.target : null);
+  });
+
   /* ---------- 변환 (완성 MD → 결과) ---------- */
-  btnConvert.addEventListener("click", function () { cameFromReview = false; convert(); });
-  function convert() {
+  btnConvert.addEventListener("click", function () { cameFromReview = false; setParts(null); convert(); });
+  function convert(preferTab) {
     var hasDoc = !!state.docText, hasDeck = !!state.deckText;
     var tabbar = document.getElementById("tabbar-tabs");
+    var part = parts ? parts[partIdx] : null;
     tabbar.innerHTML = "";
     if (hasDoc) {
       K.buildDoc(K.parseDoc(state.docText), document.getElementById("doc-mount"));
@@ -337,16 +439,26 @@
     }
     if (hasDeck) {
       var parsedDeck = K.parseDeck(state.deckText);
+      var mount = document.getElementById("deck-mount");
       if (deckCtrl && deckCtrl.destroy) deckCtrl.destroy();
-      deckCtrl = K.buildDeck(parsedDeck, document.getElementById("deck-mount"));
+      if (part && part.deckHtml) {
+        // 이 부에서 편집했던 슬라이드를 그대로 되살린다 (PPTX는 MD 기준이라 parsed 를 함께 연결)
+        deckCtrl = K.mountDeckHtml(part.deckHtml, mount, parsedDeck.meta);
+        K.lastDeck.parsed = parsedDeck;
+        K.lastDeck.imported = false;
+      } else {
+        deckCtrl = K.buildDeck(parsedDeck, mount);
+        if (part) part.builtHtml = deckCtrl.stageInner.innerHTML;
+      }
       if (K.editor) K.editor.init(deckCtrl);
       applyTheme(localStorage.getItem("kb-theme") || "maple");
-      tabbar.appendChild(makeTab("deck", "🎬 슬라이드", parsedDeck.slides.length));
+      tabbar.appendChild(makeTab("deck", "🎬 슬라이드", deckCtrl.count));
     }
     document.getElementById("tab-tools").style.display = "flex";
     document.getElementById("btn-prev-step").style.display = cameFromReview ? "inline-flex" : "none";
     showScreen("result");
-    var first = tabbar.querySelector(".tab");
+    var want = preferTab && tabbar.querySelector('.tab[data-target="' + preferTab + '"]');
+    var first = want || tabbar.querySelector(".tab");
     if (first) activateTab(first.dataset.target);
   }
 
@@ -514,31 +626,61 @@
       return;
     }
     var myToken = ++genToken;
+    var stale = document.getElementById("btn-gen-partial");
+    if (stale) stale.remove();
     genStatus.textContent = "준비 중…";
     genStatus.classList.remove("error");
     genBar.style.width = "0%";
     genStep.textContent = "0"; genTotal.textContent = "0";
     showScreen("gen");
 
-    K.generateFromSource(state.sourceText, function (done, total, label) {
+    var onProg = function (done, total, label) {
       if (myToken !== genToken) return;
-      genStep.textContent = done; genTotal.textContent = total;
+      genStep.textContent = Math.round(done); genTotal.textContent = total;
       genBar.style.width = Math.round((done / Math.max(total, 1)) * 100) + "%";
       if (label) genStatus.textContent = label;
-    }).then(function (out) {
+    };
+    var split = K.parts ? K.parts.splitParts(state.sourceText) : null;
+    var job = split
+      ? K.parts.generateParts(state.sourceText, onProg)
+      : K.generateFromSource(state.sourceText, onProg).then(function (out) { return { parts: [out] }; });
+    job.then(function (out) {
       if (myToken !== genToken) return; // 취소됨
-      document.getElementById("rdoc").value = out.docMd;
-      document.getElementById("rdeck").value = out.deckMd;
-      document.getElementById("rtext").value = "";
-      document.getElementById("rtab-text").hidden = true;
-      selectReviewTab("rdoc");
-      showScreen("review");
+      openReviewWith(out.parts);
     }).catch(function (err) {
       if (myToken !== genToken) return;
       console.error(err);
-      genStatus.textContent = "생성 중 오류가 발생했어요: " + (err && err.message ? err.message : err) + " — 다시 시도해 주세요.";
+      var done = err && err.partialParts && err.partialParts.length;
+      genStatus.textContent = "생성 중 오류가 발생했어요: " + (err && err.message ? err.message : err) + " — 다시 시도해 주세요." +
+        (done ? " (완료된 " + done + "개 부는 '완료분 검토'로 볼 수 있어요)" : "");
       genStatus.classList.add("error");
+      if (done) offerPartial(err.partialParts);
     });
+  }
+  /* 생성 결과(1개 또는 여러 부)를 검토 화면에 띄운다 */
+  function openReviewWith(list, idx) {
+    var one = list.length === 1 ? list[0] : null;
+    setParts(one ? null : list, idx);
+    if (one) {
+      document.getElementById("rdoc").value = one.docMd || "";
+      document.getElementById("rdeck").value = one.deckMd || "";
+      document.getElementById("rtext").value = one.textMd || "";
+      document.getElementById("rtab-text").hidden = !one.textMd;
+    } else {
+      loadReviewPart();
+    }
+    selectReviewTab("rdoc");
+    showScreen("review");
+  }
+  /* 부별 생성 도중 실패하면, 끝난 부까지는 검토할 수 있게 버튼을 붙인다 */
+  function offerPartial(list) {
+    var old = document.getElementById("btn-gen-partial");
+    if (old) old.remove();
+    var b = document.createElement("button");
+    b.className = "btn btn-primary"; b.id = "btn-gen-partial";
+    b.textContent = "완료분 검토 (" + list.length + "개 부) →";
+    b.addEventListener("click", function () { b.remove(); openReviewWith(list); });
+    document.getElementById("btn-gen-cancel").insertAdjacentElement("beforebegin", b);
   }
   btnGenerate.addEventListener("click", runGenerate);
   document.getElementById("btn-gen-cancel").addEventListener("click", function () {
@@ -597,21 +739,20 @@
   K.app = {
     showScreen: showScreen,
     refreshAi: refreshAi,
+    /* o = {docMd, deckMd, textMd} 하나, 또는 o.parts = [{label, docMd, deckMd, textMd}] 여러 부 */
     openReview: function (o) {
-      document.getElementById("rdoc").value = o.docMd || "";
-      document.getElementById("rdeck").value = o.deckMd || "";
-      document.getElementById("rtext").value = o.textMd || "";
-      document.getElementById("rtab-text").hidden = !o.textMd;
-      selectReviewTab(o.tab || "rdoc");
-      showScreen("review");
+      openReviewWith(o.parts && o.parts.length ? o.parts : [o], o.index || 0);
+      if (o.tab) selectReviewTab(o.tab);
     }
   };
   document.getElementById("btn-dl-active").addEventListener("click", function () {
     var pane = activeReviewPane();
     var names = { rdoc: "교수안", rdeck: "슬라이드 편성안", rtext: "교재(교습안)" };
-    download((names[pane.id] || "문서") + ".md", pane.value);
+    var suffix = parts ? " - " + String(parts[partIdx].label || "").replace(/[\\/:*?"<>|]+/g, " ").trim() : "";
+    download((names[pane.id] || "문서") + suffix + ".md", pane.value);
   });
   document.getElementById("btn-build").addEventListener("click", function () {
+    if (parts) saveReviewPart();
     state.docText = document.getElementById("rdoc").value;
     state.deckText = document.getElementById("rdeck").value;
     markFilled(dzDoc, "교수안.md (생성)");

@@ -427,6 +427,8 @@
       '<div class="cs-actions"><button class="btn btn-primary" data-act="open-review"' + (o ? "" : " disabled") + ">🎬 검토 후 슬라이드·문서로 빌드 →</button>" +
       '<button class="btn btn-ghost" data-act="dl-qcsv"' + (qn ? "" : " disabled") + ">⤓ 이 단원 문제은행 CSV</button></div></div>" +
       '<div class="cs-card"><div class="cs-card-head"><h3>과정 전체</h3></div><div class="cs-actions">' +
+      '<button class="btn btn-primary" data-act="open-review-all"' + (S.course.units.filter(function (x) { return x.outputs; }).length > 1 ? "" : " disabled") +
+      '>🎬 조립된 단원 모두 빌드 (드롭다운으로 이동)</button>' +
       '<button class="btn btn-ghost" data-act="dl-course">⤓ 과정 설계서.md (단원·블록 시간표)</button>' +
       '<button class="btn btn-ghost" data-act="dl-all-text">⤓ 전체 교재.md</button>' +
       '<button class="btn btn-ghost" data-act="dl-all-qcsv">⤓ 전체 문제은행 CSV</button></div>' +
@@ -534,6 +536,15 @@
     "open-review": function () {
       var o = unit().outputs;
       if (o && K.app) K.app.openReview({ docMd: o.docMd, deckMd: o.deckMd, textMd: o.textMd });
+    },
+    "open-review-all": function () {
+      var list = [], start = 0;
+      S.course.units.forEach(function (u, i) {
+        if (!u.outputs) return;
+        if (i === S.unit) start = list.length;
+        list.push({ label: (i + 1) + "단원. " + u.title + " (" + u.hours + "시간)", title: u.title, docMd: u.outputs.docMd, deckMd: u.outputs.deckMd, textMd: u.outputs.textMd });
+      });
+      if (list.length && K.app) K.app.openReview({ parts: list, index: start });
     },
     "dl-out": function (el) { var o = unit().outputs; if (o) download(safeName(el.dataset.file.replace(/\.md$/, "")) + ".md", o[el.dataset.k]); },
     "dl-course": function () { download(safeName("과정 설계서 - " + S.course.title) + ".md", C.courseMd(S.course)); },

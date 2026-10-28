@@ -98,6 +98,25 @@ body {
   font-family: var(--font-ui); font-weight: 600; font-size: 13.5px; color: var(--ink);
   border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 9px 14px; cursor: pointer;
 }
+/* 부(하위 주제) 선택 드롭다운 — 결과·검토 화면 */
+.part-sel {
+  font-family: var(--font-ui); font-weight: 800; font-size: 13.5px; color: var(--maple-deep);
+  border: 1.5px solid var(--maple); background: #fff7f0; border-radius: 999px; padding: 8px 14px;
+  cursor: pointer; max-width: 340px; margin-right: 6px;
+}
+.part-sel:focus { outline: none; box-shadow: 0 0 0 3px rgba(255, 122, 47, .18); }
+.part-sel[hidden] { display: none; }
+/* 소스 원고 만들기: 하위 주제 감지 · 생성: 부 감지 안내 */
+.write-parts {
+  display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap;
+  margin: 10px auto 0; font-size: 13px; font-weight: 600; color: #4a37a6;
+  background: #f3f0ff; border-radius: 12px; padding: 8px 14px; max-width: 760px;
+}
+.write-parts[hidden] { display: none; }
+.write-parts input { width: 64px; font-family: var(--font-ui); font-size: 13px; border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; }
+.write-parts-split { color: var(--ink-soft); font-weight: 500; }
+.parts-hint { margin: 10px auto 0; font-size: 12.5px; font-weight: 600; color: #4a37a6; background: #f3f0ff; border-radius: 12px; padding: 8px 14px; max-width: 760px; text-align: left; line-height: 1.6; }
+.parts-hint[hidden] { display: none; }
 
 /* ============================================================
    튜토리얼

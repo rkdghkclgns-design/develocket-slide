@@ -71,7 +71,7 @@
   function truncate(s, n) { return s.length > n ? s.slice(0, n) + "…" : s; }
 
   /* ---------- 메타(머리말) 생성 ---------- */
-  function genMeta(intro, sections) {
+  function genMeta(intro, sections, course) {
     var toc = sections.map(function (s, i) { return (i + 1) + ". " + s.title; }).join("\n");
     var totalMin = sections.reduce(function (a, s) { return a + (s.time || 0); }, 0);
     var prompt =
@@ -83,6 +83,7 @@
       "[학습목표]\n- (4~6개, 각 항목은 '~할 수 있다'로 끝남)\n" +
       "[개요]\n(2~3문장 한 문단. 이 차시가 무엇을 왜 다루는지)\n" +
       "[유의사항]\n- (강사가 유의할 점 3~4개)\n\n" +
+      (course ? "[과정] " + course + " — 이 원고는 과정의 한 부(部)입니다. 교과목은 과정명을, 주제는 이 부의 주제를 씁니다.\n" : "") +
       "[강의 제목/도입]\n" + truncate(intro, 1200) + "\n\n[목차]\n" + toc +
       (totalMin ? "\n\n(참고: 전체 약 " + totalMin + "분)" : "");
     return call(prompt, "plan").then(parseMeta);
@@ -296,7 +297,9 @@
   }
 
   /* ---------- 메인 파이프라인 ---------- */
-  function generateFromSource(sourceMd, onProgress) {
+  /* opts.minutes: 분량(분) 고정 · opts.course: 과정명(교과목) · opts.topic: 주제(부 제목) */
+  function generateFromSource(sourceMd, onProgress, opts) {
+    opts = opts || {};
     var prog = onProgress || function () {};
     var parsed = splitSections(sourceMd);
     var sections = parsed.sections;
@@ -310,12 +313,14 @@
 
     prog(0, total, "원고 분석 중…");
     var meta;
-    return genMeta(parsed.intro, sections)
+    return genMeta(parsed.intro, sections, opts.course)
       .then(function (m) {
         meta = m;
-        // 분량: 섹션 시간 합과 360분 중 큰 값 (최소 6시수 보장)
+        if (opts.course) meta.교과목 = opts.course;
+        if (opts.topic) meta.주제 = opts.topic;
+        // 분량: 지정 분량, 없으면 섹션 시간 합과 360분 중 큰 값 (최소 6시수 보장)
         var tm = sections.reduce(function (a, s) { return a + (s.time || 0); }, 0);
-        tm = Math.max(tm, 360);
+        tm = opts.minutes ? opts.minutes : Math.max(tm, 360);
         meta.소요 = tm + "분(약 " + Math.round(tm / 60) + "시수)";
         tick("머리말 생성 완료");
         // 섹션 순차 처리 (rate limit 보호)
@@ -355,23 +360,30 @@
   /* ---------- 소스 원고 만들기 (사용자 입력 → AI가 360분 분량 원고 작성) ----------
      한 번의 호출로는 360분 분량이 잘릴 수 있어 2단계로 작성한다:
      1) 개요(제목·목표·섹션 목록·시간 배분) → 2) 섹션별 본문 순차 작성 → 조립 */
-  function writeSource(brief, onProgress) {
+  /* opts.minutes: 총 분량(기본 360) · opts.heading: 원고 첫 줄(# …) 대체 · opts.context: 과정 맥락(다른 부와 겹치지 않게) */
+  function writeSource(brief, onProgress, opts) {
+    opts = opts || {};
     var prog = typeof onProgress === "function" ? onProgress : function () {};
     var briefShort = truncate(String(brief || ""), 8000);
+    var M = Math.max(60, Math.round(Number(opts.minutes) || 360));
+    var range = M <= 240 ? [4, 6] : M <= 420 ? [6, 9] : [7, 10];
+    var hoursLabel = M % 60 ? M + "분" : M + "분(" + (M / 60) + "시수)";
 
     var outlinePrompt = [
-      "당신은 교육 콘텐츠 전문 작가입니다. 아래 [입력]을 바탕으로 총 360분(6시수) 강의의 개요를 설계하세요.",
+      "당신은 교육 콘텐츠 전문 작가입니다. 아래 [입력]을 바탕으로 총 " + hoursLabel + " 강의의 개요를 설계하세요.",
       "",
       "[출력 형식 — 아래 접두어 형식의 줄만, 다른 텍스트 금지]",
       "제목: 강의 제목 한 줄",
       "목표: 학습 목표 한 개 (3~5줄 반복)",
-      "섹션: 섹션 제목 | NN분 | 다룰 핵심 내용 한 줄 (7~10줄 반복)",
+      "섹션: 섹션 제목 | NN분 | 다룰 핵심 내용 한 줄 (" + range[0] + "~" + range[1] + "줄 반복)",
       "",
       "[규칙]",
-      "- 섹션은 7~10개, 시간 합계는 정확히 360분",
+      "- 섹션은 " + range[0] + "~" + range[1] + "개, 시간 합계는 정확히 " + M + "분",
       "- 도입 → 개념 → 심화 → 실습/활동 → 정리 흐름으로 구성",
-      "- [입력]에 이미 원고·MD가 포함되어 있으면 그 구조와 내용을 최대한 보존하면서 확장·세분화해 360분으로 설계",
-      "- 입력이 짧아도 주제에 맞는 심화·응용·실습 섹션을 보충해 360분을 채울 것",
+      "- [입력]에 이미 원고·MD가 포함되어 있으면 그 구조와 내용을 최대한 보존하면서 확장·세분화해 " + M + "분으로 설계",
+      "- 입력이 짧아도 주제에 맞는 심화·응용·실습 섹션을 보충해 " + M + "분을 채울 것",
+      opts.context ? "- [과정 맥락]의 다른 부에서 다룰 내용은 겹치지 않게 하고, 이 부의 주제에 집중할 것" : "",
+      opts.context ? "\n[과정 맥락]\n" + opts.context : "",
       "",
       "[입력]",
       briefShort
@@ -400,6 +412,7 @@
         "[섹션] " + sec.title + " (" + sec.time + "분)",
         "[핵심 내용] " + (sec.note || sec.title),
         "[전체 섹션 흐름] " + outline.sections.map(function (s) { return s.title; }).join(" → "),
+        opts.context ? "[과정 맥락] " + opts.context.replace(/\n+/g, " / ") : "",
         "",
         "[규칙]",
         "- " + sec.time + "분 수업 분량에 맞게 5~8단락으로 풍부하게: 개념 설명, 구체 예시 2개 이상, 강사 설명 포인트, 학생 활동 아이디어 포함",
@@ -422,13 +435,13 @@
     return call(outlinePrompt, "plan").then(function (outText) {
       var outline = parseOutline(stripFence(outText));
       if (!outline.sections.length) throw new Error("개요 생성에 실패했습니다. 다시 시도해 주세요.");
-      // 시간 보정: 합이 360이 아니면 비례 배분
+      // 시간 보정: 합이 목표 분량이 아니면 비례 배분
       var sum = outline.sections.reduce(function (a, s) { return a + (s.time || 0); }, 0);
-      if (sum > 0 && sum !== 360) {
+      if (sum > 0 && sum !== M) {
         var acc = 0;
         outline.sections.forEach(function (s, i) {
-          if (i === outline.sections.length - 1) { s.time = 360 - acc; }
-          else { s.time = Math.max(20, Math.round((s.time / sum) * 360 / 5) * 5); acc += s.time; }
+          if (i === outline.sections.length - 1) { s.time = M - acc; }
+          else { s.time = Math.max(20, Math.round((s.time / sum) * M / 5) * 5); acc += s.time; }
         });
       }
       var total = outline.sections.length;
@@ -446,7 +459,7 @@
       });
       return chain.then(function () {
         prog(total, total, "원고 조립 중…");
-        var head = "# " + outline.title + "\n\n## 학습 목표\n" +
+        var head = (opts.heading || "# " + outline.title) + "\n\n## 학습 목표\n" +
           (outline.goals.length ? outline.goals.map(function (g) { return "- " + g; }).join("\n") : "- " + outline.title + " 이해") + "\n";
         return head + "\n" + results.join("\n\n");
       });

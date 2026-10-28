@@ -8,9 +8,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Jua&family=Gothic+A1:wght@400;500;700;800;900&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="assets/styles.css" />
-<link rel="stylesheet" href="assets/slides.css" />
-<link rel="stylesheet" href="assets/course.css" />
+<link rel="stylesheet" href="assets/styles.css?v=20261028b" />
+<link rel="stylesheet" href="assets/slides.css?v=20261028b" />
+<link rel="stylesheet" href="assets/course.css?v=20261028b" />
 </head>
 <body>
 <div class="app" id="app">
@@ -55,7 +55,17 @@
         </div>
         <div class="src-or"><span>또는 내용 직접 입력 · 올린 MD에 이어서 보충 설명도 가능</span></div>
         <textarea id="write-brief" class="source-text" spellcheck="false" placeholder="강의 주제, 대상, 다루고 싶은 내용을 자유롭게 적어주세요.
-예) 중학생 대상 게임 기획 입문 2차시 — 재미 요소 분석, 간단한 기획서 작성 활동 포함"></textarea>
+예) 중학생 대상 게임 기획 입문 2차시 — 재미 요소 분석, 간단한 기획서 작성 활동 포함
+
+하위 주제별로 나누려면 아래처럼 적으면 됩니다 (하위 주제마다 교수안·슬라이드가 따로 만들어집니다)
+* 주제 입력: 생성형 AI와 UGC 산업의 이해
+   * 생성형 AI의 종류
+   * LLM의 동작 원리"></textarea>
+        <div class="write-parts" id="write-parts" hidden>
+          🧩 하위 주제 <b id="write-parts-n">0</b>개 감지 — 부(部)마다 원고를 따로 씁니다 · 총
+          <input type="number" id="write-hours" min="1" max="400" value="40" /> 시간
+          <span class="write-parts-split" id="write-parts-split"></span>
+        </div>
         <div class="intro-actions">
           <button class="btn btn-primary" id="btn-write" disabled>✨ AI로 원고 작성</button>
         </div>
@@ -108,6 +118,7 @@
         </div>
         <div class="src-or"><span>또는 마크다운 직접 붙여넣기</span></div>
         <textarea id="source-text" class="source-text" spellcheck="false" placeholder="소스 원고(마크다운)를 여기에 붙여넣으세요. 파일을 올리면 내용이 여기에 채워져 편집할 수 있습니다."></textarea>
+        <p class="parts-hint" id="gen-parts-hint" hidden></p>
         <div class="gen-model-row">
           <label for="gen-style">🎞 슬라이드 형식</label>
           <select id="gen-style" title="생성할 슬라이드의 용도">
@@ -184,6 +195,7 @@
   <!-- 검토·편집 화면 -->
   <section class="review" id="review">
     <div class="review-bar">
+      <select class="part-sel" id="review-part" title="부(하위 주제) 선택" hidden></select>
       <div class="review-tabs">
         <button class="rtab active" data-rt="rdoc">📖 교수안.md</button>
         <button class="rtab" data-rt="rdeck">🎬 슬라이드 편성안.md</button>
@@ -205,6 +217,7 @@
   <!-- 결과 화면 -->
   <section class="result" id="result">
     <div class="tabbar">
+      <select class="part-sel" id="part-sel" title="부(하위 주제) 선택 — 부마다 교수안·슬라이드가 따로 있습니다" hidden></select>
       <div id="tabbar-tabs" style="display:flex;gap:6px"></div>
       <div class="spacer"></div>
       <div class="tab-tools" id="tab-tools" style="display:none">
@@ -275,24 +288,25 @@
   </svg>
 </template>
 
-<script src="assets/image-slot.js"></script>
+<script src="assets/image-slot.js?v=20261028b"></script>
 <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
-<script src="assets/parser.js"></script>
-<script src="assets/render-doc.js"></script>
-<script src="assets/render-deck.js"></script>
-<script src="assets/editor.js"></script>
-<script src="assets/layouts.js"></script>
-<script src="assets/tutorial.js"></script>
-<script src="assets/ai-config.js"></script>
-<script src="assets/ai-client.js"></script>
-<script src="assets/generate.js"></script>
-<script src="assets/ncs-catalog.js"></script>
-<script src="assets/course-model.js"></script>
-<script src="assets/course-ai.js"></script>
-<script src="assets/export.js"></script>
-<script src="assets/ref-images.js"></script>
-<script src="assets/sample-data.js"></script>
-<script src="assets/main.js"></script>
-<script src="assets/course-ui.js"></script>
+<script src="assets/parser.js?v=20261028b"></script>
+<script src="assets/render-doc.js?v=20261028b"></script>
+<script src="assets/render-deck.js?v=20261028b"></script>
+<script src="assets/editor.js?v=20261028b"></script>
+<script src="assets/layouts.js?v=20261028b"></script>
+<script src="assets/tutorial.js?v=20261028b"></script>
+<script src="assets/ai-config.js?v=20261028b"></script>
+<script src="assets/ai-client.js?v=20261028b"></script>
+<script src="assets/generate.js?v=20261028b"></script>
+<script src="assets/source-parts.js?v=20261028b"></script>
+<script src="assets/ncs-catalog.js?v=20261028b"></script>
+<script src="assets/course-model.js?v=20261028b"></script>
+<script src="assets/course-ai.js?v=20261028b"></script>
+<script src="assets/export.js?v=20261028b"></script>
+<script src="assets/ref-images.js?v=20261028b"></script>
+<script src="assets/sample-data.js?v=20261028b"></script>
+<script src="assets/main.js?v=20261028b"></script>
+<script src="assets/course-ui.js?v=20261028b"></script>
 </body>
 </html>
