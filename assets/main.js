@@ -454,6 +454,10 @@
       applyTheme(localStorage.getItem("kb-theme") || "maple");
       tabbar.appendChild(makeTab("deck", "🎬 슬라이드", deckCtrl.count));
     }
+    if (hasDoc || hasDeck) {
+      tabbar.appendChild(makeTab("md", "📄 교안 MD", null));
+      if (K.mdPane) K.mdPane.render();
+    }
     document.getElementById("tab-tools").style.display = "flex";
     document.getElementById("btn-prev-step").style.display = cameFromReview ? "inline-flex" : "none";
     showScreen("result");
@@ -486,6 +490,16 @@
       document.getElementById(id).style.display = deckOnly ? "inline-flex" : "none";
     });
     if (!deckOnly && K.editor) K.editor.setEdit(false);
+  }
+
+  /* 📄 교안 MD 탭(md-pane.js)이 읽는 지금 결과 — 교수안·편성안·교재 + 부 목록 */
+  function currentMd() {
+    var part = parts ? parts[partIdx] : null;
+    return {
+      doc: state.docText || "", deck: state.deckText || "",
+      text: part ? part.textMd || "" : cameFromReview ? document.getElementById("rtext").value : "",
+      parts: parts, part: part
+    };
   }
 
   /* ---------- 테마 전환 ---------- */
@@ -626,6 +640,9 @@
       return;
     }
     var myToken = ++genToken;
+    setReviewNote("");
+    var staleSkip = document.getElementById("btn-gen-skipimg");
+    if (staleSkip) staleSkip.remove();
     var stale = document.getElementById("btn-gen-partial");
     if (stale) stale.remove();
     genStatus.textContent = "준비 중…";
@@ -645,7 +662,20 @@
       ? K.parts.generateParts(state.sourceText, onProg)
       : K.generateFromSource(state.sourceText, onProg).then(function (out) { return { parts: [out] }; });
     job.then(function (out) {
-      if (myToken !== genToken) return; // 취소됨
+      if (myToken !== genToken) return null; // 취소됨
+      // 슬라이드 '이미지/시각' 제안으로 이미지를 자동 생성해 참고 이미지·슬라이드 칸에 넣는다 (Google 키가 있을 때)
+      if (!K.autoImages) return out;
+      // 글은 이미 만들었으니 이미지 단계는 건너뛸 수 있게 — 건너뛰면 만든 이미지까지만 넣고 검토로 간다
+      var skip = false, skipBtn = offerSkipImages(function () { skip = true; });
+      var dropped = function () { return myToken !== genToken; }; // 생성 취소 — 늦게 온 이미지도 버린다
+      return K.autoImages.run(out.parts, onProg, function () { return skip || dropped(); }, dropped).then(function (r) {
+        if (skipBtn) skipBtn.remove();
+        if (myToken !== genToken) return null;
+        setReviewNote(K.autoImages.summary(r));
+        return { parts: r.parts };
+      });
+    }).then(function (out) {
+      if (!out || myToken !== genToken) return; // 취소됨
       openReviewWith(out.parts);
     }).catch(function (err) {
       if (myToken !== genToken) return;
@@ -656,6 +686,12 @@
       genStatus.classList.add("error");
       if (done) offerPartial(err.partialParts);
     });
+  }
+  /* 검토 화면 안내 줄 — 자동 이미지 결과 같은 한 줄 알림을 덧붙인다 */
+  var reviewHintEl = document.querySelector(".review-hint");
+  var REVIEW_HINT = reviewHintEl ? reviewHintEl.textContent : "";
+  function setReviewNote(note) {
+    if (reviewHintEl) reviewHintEl.textContent = REVIEW_HINT + (note ? " " + note : "");
   }
   /* 생성 결과(1개 또는 여러 부)를 검토 화면에 띄운다 */
   function openReviewWith(list, idx) {
@@ -671,6 +707,16 @@
     }
     selectReviewTab("rdoc");
     showScreen("review");
+  }
+  /* 이미지 자동 생성 단계에서 '이미지 건너뛰기' — 이미지가 필요 없는 사용자가 글을 버리지 않고 바로 검토로 가게 한다 */
+  function offerSkipImages(onSkip) {
+    if (!K.autoImages || !K.autoImages.count() || !K.autoImages.available()) return null;
+    var b = document.createElement("button");
+    b.className = "btn btn-ghost"; b.id = "btn-gen-skipimg";
+    b.textContent = "이미지 건너뛰고 검토 →";
+    b.addEventListener("click", function () { b.disabled = true; b.textContent = "이번 이미지까지만 넣고 넘어갑니다…"; onSkip(); });
+    document.getElementById("btn-gen-cancel").insertAdjacentElement("beforebegin", b);
+    return b;
   }
   /* 부별 생성 도중 실패하면, 끝난 부까지는 검토할 수 있게 버튼을 붙인다 */
   function offerPartial(list) {
@@ -700,34 +746,6 @@
     });
   });
 
-  /* 검토 MD에 이미지 붙여넣기(Ctrl+V) → 커서 위치에 ![](dataURL) 삽입 → 빌드 시 렌더 */
-  function wirePasteImage(ta) {
-    if (!ta) return;
-    ta.addEventListener("paste", function (e) {
-      var items = e.clipboardData && e.clipboardData.items;
-      if (!items) return;
-      var file = null;
-      for (var i = 0; i < items.length; i++) {
-        if (items[i].kind === "file" && String(items[i].type).indexOf("image/") === 0) { file = items[i].getAsFile(); break; }
-      }
-      if (!file) return;
-      e.preventDefault();
-      var insert = function (url) {
-        var md = "\n\n![붙여넣은 이미지](" + url + ")\n\n";
-        var start = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
-        var end = ta.selectionEnd != null ? ta.selectionEnd : ta.value.length;
-        ta.value = ta.value.slice(0, start) + md + ta.value.slice(end);
-        var pos = start + md.length;
-        try { ta.selectionStart = ta.selectionEnd = pos; } catch (e2) {}
-        ta.dispatchEvent(new Event("input", { bubbles: true }));
-      };
-      if (K.refDownscale) K.refDownscale(file).then(insert).catch(function () {});
-      else { var fr = new FileReader(); fr.onload = function () { insert(String(fr.result)); }; fr.readAsDataURL(file); }
-    });
-  }
-  wirePasteImage(document.getElementById("rdoc"));
-  wirePasteImage(document.getElementById("rdeck"));
-  wirePasteImage(document.getElementById("rtext"));
   function activeReviewPane() {
     return document.querySelector(".rt-pane.active");
   }
@@ -738,9 +756,11 @@
   /* 다른 모듈(과정 설계)에서 생성한 MD를 검토 화면으로 넘긴다 */
   K.app = {
     showScreen: showScreen,
+    currentMd: currentMd,
     refreshAi: refreshAi,
     /* o = {docMd, deckMd, textMd} 하나, 또는 o.parts = [{label, docMd, deckMd, textMd}] 여러 부 */
     openReview: function (o) {
+      setReviewNote(o.note || "");
       openReviewWith(o.parts && o.parts.length ? o.parts : [o], o.index || 0);
       if (o.tab) selectReviewTab(o.tab);
     }
@@ -749,7 +769,8 @@
     var pane = activeReviewPane();
     var names = { rdoc: "교수안", rdeck: "슬라이드 편성안", rtext: "교재(교습안)" };
     var suffix = parts ? " - " + String(parts[partIdx].label || "").replace(/[\\/:*?"<>|]+/g, " ").trim() : "";
-    download((names[pane.id] || "문서") + suffix + ".md", pane.value);
+    // 자동 이미지 표시([이미지:id])는 그림으로 바꿔 내려받는다 — 파일만 있어도 그림이 남게
+    download((names[pane.id] || "문서") + suffix + ".md", K.autoImages ? K.autoImages.expandTags(pane.value) : pane.value);
   });
   document.getElementById("btn-build").addEventListener("click", function () {
     if (parts) saveReviewPart();
@@ -774,26 +795,6 @@
   /* ---------- 네비게이션 ---------- */
   document.getElementById("btn-back").addEventListener("click", function () { showScreen("intro"); });
   document.getElementById("btn-reset").addEventListener("click", function () { showScreen("intro"); });
-
-  /* ---------- 인쇄 / PDF ---------- */
-  function injectOrient(mode) {
-    var el = document.getElementById("print-orient");
-    if (!el) { el = document.createElement("style"); el.id = "print-orient"; document.head.appendChild(el); }
-    // 슬라이드: 16:9 페이지로 한 장이 한 페이지를 가득 채움 / 교수안 문서: A4 세로
-    el.textContent = (mode === "slide")
-      ? "@page { size: 297mm 167mm; margin: 0; }"
-      : "@page { size: A4 portrait; margin: 14mm; }";
-  }
-  document.getElementById("btn-print").addEventListener("click", function () {
-    var which = this.dataset.kind || "doc";
-    document.querySelectorAll(".pane").forEach(function (p) { p.classList.remove("print-target"); });
-    var pane = document.getElementById(which + "-pane");
-    if (pane) pane.classList.add("print-target");
-    if (which === "deck") { document.body.classList.add("print-deck"); injectOrient("slide"); }
-    else { injectOrient("portrait"); }
-    window.print();
-  });
-  window.addEventListener("afterprint", function () { document.body.classList.remove("print-deck"); });
 
   refreshConvert();
 })();

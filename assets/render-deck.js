@@ -87,9 +87,12 @@
   // 이미지는 절대 잘리지 않도록 항상 contain. fitFrame=true면 프레임이 이미지 비율에 맞춰져
   // 여백(레터박스) 없이 영역을 가득 채운다. (image-slot의 frame="fit" 처리)
   function imgslot(id, placeholder, cls, src, fitFrame) {
+    // 시각 제안에 붙은 자동 생성 이미지([이미지:id])·이미지 주소는 칸에 채우고, 설명만 자리 표시로 남긴다
+    var v = window.KBuilder.resolveVisual ? window.KBuilder.resolveVisual(placeholder) : { text: placeholder, src: "" };
+    src = src || v.src;
     return '<image-slot id="' + esc(id) + '" class="' + cls + '" shape="rounded" radius="36" fit="contain"' +
       (fitFrame ? ' frame="fit"' : '') +
-      (src ? ' src="' + src + '"' : '') + ' placeholder="' + esc(placeholder || "이미지를 끌어다 놓기") + '"></image-slot>';
+      (src ? ' src="' + esc(src) + '"' : '') + ' placeholder="' + esc(v.text || "이미지를 끌어다 놓기") + '"></image-slot>';
   }
 
   /* ---------- 레이아웃 ---------- */
@@ -491,6 +494,15 @@
     statementInfo: statementInfo, collectCards: collectCards,
     labeledGroups: labeledGroups, stepSequence: stepSequence,
     footOf: footOf, splitItems: splitItems
+  };
+  /* 이 슬라이드가 이미지 칸을 그리는지 — renderSlide 의 레이아웃 판별과 같은 순서 (자동 이미지 고르기에 사용) */
+  window.KBuilder.slideShowsImage = function (s) {
+    if (!s || !s.visual) return false;
+    if (s.kind === "activity") return true;
+    if (s.kind !== "content") return false;
+    var st = statementInfo(s.lines);
+    if (st && s.lines.length <= 3) return false;
+    return !labeledGroups(s.lines) && !collectCards(s.lines); // 단계·일반 내용 레이아웃만 이미지 칸이 있다
   };
   /* 내보낸 HTML의 슬라이드를 그대로 장착해 이어서 편집 */
   window.KBuilder.mountDeckHtml = function (slidesHtml, mount, meta) {

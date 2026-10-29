@@ -71,9 +71,11 @@
     var chips = '<button class="cs-stc' + (ws.status ? "" : " on") + '" data-act="ws-status" data-v="">전체 <b>' + all.length + "</b></button>" +
       C().STATUSES.map(function (s) { return '<button class="cs-stc ' + stClass(s) + (ws.status === s ? " on" : "") + '" data-act="ws-status" data-v="' + esc(s) + '">' + esc(s) + " <b>" + (counts[s] || 0) + "</b></button>"; }).join("");
     var trashN = (c.course.trash || []).length;
+    var rest = K.courseAI.remainingModules(c.course).length;
     return '<aside class="cs-side">' +
       '<div class="cs-side-top"><input class="cs-search" data-ws-q placeholder="학습모듈 검색 (이름·카테고리·목표)" value="' + esc(ws.q) + '">' +
-      '<button class="btn btn-primary" data-act="ws-new">＋ 새 학습모듈</button></div>' +
+      '<button class="btn btn-primary" data-act="ws-new">＋ 새 학습모듈</button>' +
+      (rest ? '<button class="btn btn-ghost cs-gen-rest" data-act="gen-course"' + (U().aiReady("write") ? "" : ' disabled title="AI 키 필요"') + ">📝 남은 교안 " + rest + "개 모두 만들기</button>" : "") + "</div>" +
       '<div class="cs-stchips">' + chips + "</div>" +
       '<div class="cs-side-row"><span class="cs-seg2"><button class="' + (ws.group === "unit" ? "on" : "") + '" data-act="ws-group" data-v="unit">단원별</button><button class="' + (ws.group === "category" ? "on" : "") + '" data-act="ws-group" data-v="category">카테고리별</button></span>' +
       '<button class="cs-link" data-act="ws-ncsf">NCS 필터' + (ws.ncsF && ws.ncsF.length ? " (" + ws.ncsF.length + ")" : "") + "</button>" +

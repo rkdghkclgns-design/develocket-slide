@@ -30,7 +30,12 @@ ok(R('[a](https://x.com/"onmouseover="y)').indexOf('"onmouseover') === -1, "링�
 
 /* 제목·서식 */
 const t = R("# 큰 제목\n## 둘째\n본문 **굵게** *기울임* ~~취소~~ `a < b` [링크](https://example.com)");
-ok(/<h1>큰 제목<\/h1>/.test(t) && /<h2>둘째<\/h2>/.test(t), "제목 h1·h2");
+ok(/<h1 id="큰-제목">큰 제목<\/h1>/.test(t) && /<h2 id="둘째">둘째<\/h2>/.test(t), "제목 h1·h2 (문서 안 링크용 id)");
+const toc = R("- [학습 목표](#학습-목표)\n\n## 학습 목표\n\n## 학습 목표");
+ok(/<a href="#학습-목표">학습 목표<\/a>/.test(toc) && !/#학습-목표" target/.test(toc), "목차 링크(#)는 새 창 없이 문서 안에서");
+ok(/id="학습-목표"/.test(toc) && /id="학습-목표-1"/.test(toc), "같은 제목은 -1 로 구분");
+ok(/<h1 id="constructor">Constructor<\/h1>/.test(R("# Constructor")), "객체 기본 속성 이름의 제목도 id 가 깨지지 않음");
+ok(/<h2 id="section">/.test(R("## 🎯")), "글자 없는 제목은 id 'section'");
 ok(/<strong>굵게<\/strong>/.test(t) && /<em>기울임<\/em>/.test(t) && /<del>취소<\/del>/.test(t), "굵게·기울임·취소선");
 ok(/<code>a &lt; b<\/code>/.test(t), "인라인 코드는 이스케이프된 글자로");
 ok(/<a href="https:\/\/example\.com" target="_blank" rel="noopener noreferrer">링크<\/a>/.test(t), "https 링크");
@@ -54,7 +59,7 @@ ok(/<p>첫 줄<br>둘째 줄<\/p>/.test(R("첫 줄\n둘째 줄")), "문단 안 �
 
 /* 프론트매터 */
 const fm = R("---\n교과목: 게임 기획\nstatus: 초안\n---\n# 제목");
-ok(/^<div class="md-front"><span><b>교과목<\/b> 게임 기획<\/span><span><b>status<\/b> 초안<\/span><\/div><h1>제목<\/h1>$/.test(fm), "프론트매터는 정보 칩으로");
+ok(/^<div class="md-front"><span><b>교과목<\/b> 게임 기획<\/span><span><b>status<\/b> 초안<\/span><\/div><h1 id="제목">제목<\/h1>$/.test(fm), "프론트매터는 정보 칩으로");
 ok(/<img src="data:image\/png;base64,AAAA" alt="그림" loading="lazy">/.test(R("![그림](data:image/png;base64,AAAA)")), "붙여넣은 data:image 그림");
 
 console.log(`md.test.js: ${passed} 통과, ${failures.length} 실패`);

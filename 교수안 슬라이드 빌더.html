@@ -8,9 +8,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Jua&family=Gothic+A1:wght@400;500;700;800;900&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="assets/styles.css?v=20261029a" />
-<link rel="stylesheet" href="assets/slides.css?v=20261029a" />
-<link rel="stylesheet" href="assets/course.css?v=20261029a" />
+<link rel="stylesheet" href="assets/styles.css?v=20261029f" />
+<link rel="stylesheet" href="assets/slides.css?v=20261029f" />
+<link rel="stylesheet" href="assets/course.css?v=20261029f" />
 </head>
 <body>
 <div class="app" id="app">
@@ -37,10 +37,18 @@
       <p class="lede">완성된 교수안·편성안 MD를 올려 바로 변환하거나 — <b>소스 원고 MD</b>를 넣어 AI가 교수안·편성안을 자동 생성한 뒤 문서·슬라이드까지 완성합니다.</p>
 
       <div class="mode-switch">
-        <button class="mode-btn active" data-mode="write">📝 소스 원고 만들기</button>
-        <button class="mode-btn" data-mode="generate">✨ 소스 원고로 생성</button>
-        <button class="mode-btn" data-mode="upload">📂 완성된 MD 올리기</button>
-        <button class="mode-btn mode-course" data-mode="course" title="주제를 넣으면 40시간 기준 단원·블록 교안, NCS 분류코드, 문제은행을 만듭니다">🧩 과정 설계(40시간)</button>
+        <div class="mode-group mode-group-course" role="group" aria-label="과정 단위">
+          <span class="mode-group-label">과정 단위</span>
+          <button class="mode-btn mode-course" data-mode="course" title="주제를 넣으면 40시간 기준 단원·블록 교안, NCS 분류코드, 문제은행을 만듭니다">🧩 과정 설계(40시간)</button>
+        </div>
+        <div class="mode-group" role="group" aria-label="강의 한 편">
+          <span class="mode-group-label">강의 한 편</span>
+          <div class="mode-group-btns">
+            <button class="mode-btn active" data-mode="write">📝 소스 원고 만들기</button>
+            <button class="mode-btn" data-mode="generate">✨ 소스 원고로 생성</button>
+            <button class="mode-btn" data-mode="upload">📂 완성된 MD 올리기</button>
+          </div>
+        </div>
       </div>
 
       <!-- 모드 0: 소스 원고 만들기 (입력 → AI가 원고 작성) -->
@@ -129,6 +137,11 @@
         <div class="gen-model-row">
           <label for="gen-model">🤖 AI 모델</label>
           <select id="gen-model" title="생성에 사용할 AI 모델"></select>
+        </div>
+        <div class="gen-model-row">
+          <label for="gen-autoimg">🖼 이미지 자동 생성</label>
+          <select id="gen-autoimg" data-auto-img title="슬라이드 '이미지/시각' 제안으로 이미지를 만들어 참고 이미지와 슬라이드 칸에 넣습니다"></select>
+          <span class="gen-row-note">Google API 키 필요 · 참고 이미지와 슬라이드 칸에 자동으로 넣습니다</span>
         </div>
         <div class="intro-actions">
           <button class="btn btn-primary" id="btn-generate" disabled>✨ AI로 생성하기 →</button>
@@ -275,6 +288,23 @@
           <div id="deck-mount"></div>
         </div>
       </div>
+      <!-- 교안 MD — 생성한 교수안·편성안·교재를 마크다운 파일 그대로 보고 내려받기 -->
+      <div class="pane" id="md-pane">
+        <div class="md-pane-bar">
+          <div class="md-files" id="md-files" role="tablist" aria-label="MD 파일"></div>
+          <div class="spacer"></div>
+          <div class="mdx-views" role="tablist" aria-label="보기">
+            <button type="button" class="mdx-view on" data-mdview="render">👁 렌더링</button>
+            <button type="button" class="mdx-view" data-mdview="raw">✎ 원문</button>
+          </div>
+          <button class="btn btn-ghost" id="btn-md-dl">⤓ 이 MD</button>
+          <button class="btn btn-ghost" id="btn-md-dl-all" hidden>⤓ 모든 부 MD</button>
+        </div>
+        <div class="md-pane-scroll">
+          <article class="md-page md-render" id="md-mount"></article>
+          <pre class="md-raw" id="md-raw" hidden></pre>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -288,36 +318,42 @@
   </svg>
 </template>
 
-<script src="assets/image-slot.js?v=20261029a"></script>
+<script src="assets/image-slot.js?v=20261029f"></script>
 <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js" integrity="sha256-zQeMqekcb54GHuCjwxDW/xV8OnGx3qf0D9U4GAFyZv8=" crossorigin="anonymous"></script>
-<script src="assets/parser.js?v=20261029a"></script>
-<script src="assets/md-render.js?v=20261029a"></script>
-<script src="assets/md-editor.js?v=20261029a"></script>
-<script src="assets/render-doc.js?v=20261029a"></script>
-<script src="assets/render-deck.js?v=20261029a"></script>
-<script src="assets/editor.js?v=20261029a"></script>
-<script src="assets/layouts.js?v=20261029a"></script>
-<script src="assets/tutorial.js?v=20261029a"></script>
-<script src="assets/ai-config.js?v=20261029a"></script>
-<script src="assets/ai-client.js?v=20261029a"></script>
-<script src="assets/generate.js?v=20261029a"></script>
-<script src="assets/source-parts.js?v=20261029a"></script>
-<script src="assets/ncs-catalog.js?v=20261029a"></script>
-<script src="assets/course-rules.js?v=20261029a"></script>
-<script src="assets/course-model.js?v=20261029a"></script>
-<script src="assets/course-sessions.js?v=20261029a"></script>
-<script src="assets/course-ai.js?v=20261029a"></script>
-<script src="assets/course-ai-tb.js?v=20261029a"></script>
-<script src="assets/course-ncs.js?v=20261029a"></script>
-<script src="assets/course-refs.js?v=20261029a"></script>
-<script src="assets/export.js?v=20261029a"></script>
-<script src="assets/ref-images.js?v=20261029a"></script>
-<script src="assets/sample-data.js?v=20261029a"></script>
-<script src="assets/main.js?v=20261029a"></script>
-<script src="assets/course-workspace.js?v=20261029a"></script>
-<script src="assets/course-textbook.js?v=20261029a"></script>
-<script src="assets/course-art.js?v=20261029a"></script>
-<script src="assets/course-qbank.js?v=20261029a"></script>
-<script src="assets/course-ui.js?v=20261029a"></script>
+<script src="assets/parser.js?v=20261029f"></script>
+<script src="assets/md-render.js?v=20261029f"></script>
+<script src="assets/md-editor.js?v=20261029f"></script>
+<script src="assets/render-doc.js?v=20261029f"></script>
+<script src="assets/render-deck.js?v=20261029f"></script>
+<script src="assets/editor.js?v=20261029f"></script>
+<script src="assets/layouts.js?v=20261029f"></script>
+<script src="assets/tutorial.js?v=20261029f"></script>
+<script src="assets/ai-config.js?v=20261029f"></script>
+<script src="assets/ai-client.js?v=20261029f"></script>
+<script src="assets/generate.js?v=20261029f"></script>
+<script src="assets/source-parts.js?v=20261029f"></script>
+<script src="assets/ncs-catalog.js?v=20261029f"></script>
+<script src="assets/course-rules.js?v=20261029f"></script>
+<script src="assets/course-model.js?v=20261029f"></script>
+<script src="assets/course-sessions.js?v=20261029f"></script>
+<script src="assets/course-ai.js?v=20261029f"></script>
+<script src="assets/course-ai-tb.js?v=20261029f"></script>
+<script src="assets/course-ncs.js?v=20261029f"></script>
+<script src="assets/course-refs.js?v=20261029f"></script>
+<script src="assets/export.js?v=20261029f"></script>
+<script src="assets/ref-images.js?v=20261029f"></script>
+<script src="assets/auto-images.js?v=20261029f"></script>
+<script src="assets/sample-data.js?v=20261029f"></script>
+<script src="assets/main.js?v=20261029f"></script>
+<script src="assets/md-pane.js?v=20261029f"></script>
+<script src="assets/review-paste.js?v=20261029f"></script>
+<script src="assets/print.js?v=20261029f"></script>
+<script src="assets/course-workspace.js?v=20261029f"></script>
+<script src="assets/course-textbook.js?v=20261029f"></script>
+<script src="assets/course-art.js?v=20261029f"></script>
+<script src="assets/course-qbank.js?v=20261029f"></script>
+<script src="assets/course-auto.js?v=20261029f"></script>
+<script src="assets/course-outputs.js?v=20261029f"></script>
+<script src="assets/course-ui.js?v=20261029f"></script>
 </body>
 </html>

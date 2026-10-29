@@ -97,10 +97,12 @@
   function lessonCard(c) {
     var m = c.module, ct = m.content || {};
     var guideN = (ct.guide || []).filter(function (g) { return String(g || "").trim(); }).length;
+    var hasTb = K.courseAI.hasTextbook(m);
     return '<div class="cs-card"><div class="cs-card-head"><h3>교수안·슬라이드</h3></div>' +
-      '<p class="cs-muted">콘텐츠의 원본은 교재입니다. 교재를 바탕으로 강사용 교수안 단계 지침과 슬라이드를 만듭니다(교재는 바뀌지 않습니다).</p>' +
+      '<p class="cs-muted">' + (hasTb ? "콘텐츠의 원본은 교재입니다. 교재를 바탕으로 강사용 교수안 단계 지침과 슬라이드를 만듭니다(교재는 바뀌지 않습니다)."
+        : "아직 교재가 없습니다. 아래 버튼은 교재(학습목표·학습내용·체크리스트)와 교수안 단계 지침·슬라이드를 한 번에 만듭니다. 교재만 먼저 다듬으려면 위 「AI 초안 생성」을 쓰세요.") + "</p>" +
       '<div class="cs-kv"><span>교수안 지침</span><b>' + guideN + "/" + (m.flow || []).length + "단계</b><span>슬라이드</span><b>" + (String(ct.slides || "").trim() ? "있음" : "없음") + "</b></div>" +
-      '<div class="cs-actions"><button class="btn btn-ghost" data-act="tb-lesson"' + (U().aiReady("write") && K.courseAI.hasTextbook(m) ? "" : " disabled") + ">교수안·슬라이드 만들기</button>" +
+      '<div class="cs-actions"><button class="btn ' + (hasTb ? "btn-ghost" : "btn-primary") + '" data-act="tb-lesson"' + (U().aiReady("write") ? "" : " disabled") + ">" + (hasTb ? "교수안·슬라이드 만들기" : "📝 교재·교수안·슬라이드 한 번에 만들기") + "</button>" +
       '<button class="btn btn-ghost" data-act="tb-assemble">단원 산출물에 반영</button></div></div>';
   }
 
@@ -491,7 +493,7 @@
     var m = c.module, g = gen(m), base = TB().tbOf(m);
     var locks = o.locks || ui.locks.slice();
     U().closeDialog();
-    U().run(o.label || "교재 " + (has(base) ? "새로 쓰는 중…" : "초안 생성 중…") + " (" + U().aiName("write") + ")", function () {
+    U().run(o.label || "교재 " + (has(base) ? "새로 쓰는 중…" : "초안 생성 중…") + " (" + U().aiName("write") + ")", function (prog) {
       return K.courseAI.draftTextbook(c.course, c.unit, m, {
         base: base, notes: g.notes, n: o.count || defaultN(m), level: g.level, length: g.length, extra: o.extra != null ? o.extra : g.extra,
         locks: locks, refs: o.noRefs ? "" : ui.refs.draft.block("draft")
@@ -503,8 +505,12 @@
           m.content.by = U().aiName("write");
           if (r.ideas.length) m.ideas = r.ideas;
           C().logChange(m, "AI 초안 생성");
-          U().toast("초안을 만들었습니다. 오른쪽 검수 결과를 확인하세요.");
-          return;
+          if (!K.courseAuto) { U().toast("초안을 만들었습니다. 오른쪽 검수 결과를 확인하세요."); return; }
+          // 새 초안: 학습내용마다 삽화를 그려 넣고, 능력단위요소를 자동 배정한다(NCS 탭에서 확정)
+          return K.courseAuto.afterTextbook(c.course, c.unit, m, function (l) { prog(l); }).then(function (a) {
+            U().toast("초안을 만들었습니다." + (a.ills ? " 삽화 " + a.ills + "개를 학습내용에 넣었습니다." : "") +
+              (a.ncs ? " NCS 능력단위요소를 자동 배정했습니다 — NCS 탭에서 확정하세요." : "") + " 오른쪽 검수 결과를 확인하세요.");
+          });
         }
         if (editedMeanwhile) U().toast("생성하는 동안 교재가 바뀌어 미리보기에서 골라 적용합니다.");
         openReview(m, TB().tbOf(m), r.tb, {
@@ -622,10 +628,11 @@
       });
     },
     "tb-lesson": function (el, c) {
-      U().run("교수안·슬라이드 만드는 중… (" + U().aiName("write") + ")", function () {
-        return K.courseAI.generateModule(c.course, c.unit, c.mi).then(function () {
+      var fresh = !K.courseAI.hasTextbook(c.module);
+      U().run((fresh ? "교재·교수안·슬라이드" : "교수안·슬라이드") + " 만드는 중… (" + U().aiName("write") + ")", function (prog) {
+        return K.courseAI.generateModule(c.course, c.unit, c.mi, function (l) { prog(l); }).then(function () {
           if (c.unit.outputs) K.courseAI.buildOutputs(c.course, c.unit);
-          U().toast("교수안 지침과 슬라이드를 만들었습니다. ④ 산출물에서 확인하세요.");
+          U().toast((fresh ? "교재와 교수안 지침·슬라이드를" : "교수안 지침과 슬라이드를") + " 만들었습니다. ④ 산출물에서 확인하세요.");
         });
       });
     },

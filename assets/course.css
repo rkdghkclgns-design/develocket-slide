@@ -450,3 +450,15 @@ details.cs-rc > summary.cs-rc-h { display: list-item; font-size: 13.5px; }
 @media (max-width: 860px) {
   .cs-sess-no span { max-width: 140px; }
 }
+
+/* 자동 배정(확정 전) · 자동 생성 설정 */
+.cs-badge.auto { background: #efe9ff; color: #5b3fd0; border-color: #d6c9ff; }
+.cs-card.cs-auto { border-color: #cdbdfb; box-shadow: 0 0 0 3px rgba(91,63,208,.08); }
+.cs-cnt.auto { background: #efe9ff; color: #5b3fd0; }
+.cs-chip i.cs-unconf { color: #5b3fd0; }
+.cs-autobar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-top: 14px; padding: 10px 14px; border: 1px dashed #d6c9ff; border-radius: 12px; background: #faf8ff; font-size: 13px; }
+.cs-autobar select { font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; background: #fff; }
+.cs-autobar .cs-muted { flex-basis: 100%; font-size: 12px; }
+.cs-side-top .cs-gen-rest { width: 100%; margin-top: 6px; }
+.cs-existing { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; border-color: #cdbdfb; background: #faf8ff; }
+.cs-existing .cs-sub { margin: 4px 0 0; }

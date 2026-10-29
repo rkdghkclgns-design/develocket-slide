@@ -21,7 +21,9 @@
       return SAFE_IMG.test(url) ? '<img src="' + url + '" alt="' + alt + '" loading="lazy">' : alt;
     });
     s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, function (m, label, url) {
-      return SAFE_LINK.test(url) ? '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + "</a>" : label;
+      if (!SAFE_LINK.test(url)) return label;
+      return url.charAt(0) === "#" ? '<a href="' + url + '">' + label + "</a>" // 문서 안 목차 링크 — 같은 화면에서 이동
+        : '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + "</a>";
     });
     s = s.replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, function (m, a, b) { return "<strong>" + (a || b) + "</strong>"; });
     s = s.replace(/(^|[^*])\*([^*\s][^*]*?)\*(?!\*)/g, "$1<em>$2</em>");
@@ -82,6 +84,16 @@
   function cells(line) { return line.replace(/^\|/, "").replace(/\|\s*$/, "").split("|").map(function (c) { return c.trim(); }); }
   function isTableSep(s) { s = String(s || "").trim(); return /^\|?[\s:|-]+$/.test(s) && /-/.test(s) && /\|/.test(s); }
 
+  /* 제목 → 문서 안 링크용 id (GitHub 방식: 소문자, 글자·숫자·공백·하이픈만 남기고 공백은 하이픈) — 같은 제목은 -1, -2 */
+  var slugSeen = Object.create(null);
+  function slug(text) {
+    var base = String(text).replace(/<[^>]+>/g, "").replace(/&[a-z#0-9]+;/gi, "").trim().toLowerCase()
+      .replace(/[^\p{L}\p{N}\s-]/gu, "").replace(/\s/g, "-") || "section";
+    var n = slugSeen[base] || 0;
+    slugSeen[base] = n + 1;
+    return n ? base + "-" + n : base;
+  }
+
   function blocks(lines) {
     var out = [], para = [], i = 0;
     function flush() { if (para.length) { out.push("<p>" + lines2html(para.join("\n")) + "</p>"); para = []; } }
@@ -99,7 +111,12 @@
         continue;
       }
       var h = raw.match(/^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/);
-      if (h) { flush(); out.push("<h" + h[1].length + ">" + inline(h[2]) + "</h" + h[1].length + ">"); i++; continue; }
+      if (h) {
+        flush();
+        var hh = inline(h[2]);
+        out.push("<h" + h[1].length + ' id="' + esc(slug(hh)) + '">' + hh + "</h" + h[1].length + ">");
+        i++; continue;
+      }
       if (/^([-*_])(\s*\1){2,}\s*$/.test(line)) { flush(); out.push("<hr>"); i++; continue; }
       if (/^\|/.test(line) && isTableSep(lines[i + 1])) {
         flush();
@@ -126,6 +143,7 @@
   }
 
   function renderMarkdown(src) {
+    slugSeen = Object.create(null);
     var lines = String(src == null ? "" : src).replace(/\r\n?/g, "\n").split("\n");
     var head = "";
     if (/^﻿?---\s*$/.test(lines[0] || "")) {
@@ -144,4 +162,18 @@
 
   var K = (window.KBuilder = window.KBuilder || {});
   K.renderMarkdown = renderMarkdown;
+
+  /* 렌더링한 문서 안의 목차 링크(#제목)는 주소를 바꾸지 않고 그 칸 안에서 스크롤한다 */
+  if (typeof document !== "undefined" && document.addEventListener) {
+    document.addEventListener("click", function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('.md-render a[href^="#"]') : null;
+      if (!a) return;
+      e.preventDefault();
+      var id = a.getAttribute("href").slice(1);
+      try { id = decodeURIComponent(id); } catch (err) { /* 잘못된 % 인코딩은 그대로 찾는다 */ }
+      var box = a.closest(".md-render");
+      var target = box && Array.prototype.filter.call(box.querySelectorAll("[id]"), function (el) { return el.id === id; })[0];
+      if (target) target.scrollIntoView({ block: "start" });
+    });
+  }
 })();

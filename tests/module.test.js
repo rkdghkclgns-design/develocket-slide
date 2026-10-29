@@ -281,6 +281,43 @@ const GOOD_TB = {
   catch (e) { eq(e.code, "cancelled", "교차 검수 중 중지 전파"); }
   K.AI = prevMixed;
 
+  /* ---------- 교안 작성: 실패한 학습모듈은 다시 시도 후 건너뛰고 계속 · 과정 전체는 남은 것만 ---------- */
+  const WRITE = "@@개요@@\n문제 상황을 설명합니다.\n@@내용 1@@\n제목: 핵심\n본문입니다.\n@@체크리스트@@\n1. 설명할 수 있습니까?\n@@교수안@@\n" +
+    [1, 2, 3, 4].map((i) => "#" + i + "\n**강사 활동**: 단계 " + i + "\n**학생 활동**: 따라 합니다.").join("\n") + "\n@@슬라이드@@\n### 슬라이드 - 핵심\n- 슬라이드 문구:\n  - 요점";
+  const gc = C.buildCourse(C.parseTopicInput("과정\n- 단원 가\n- 단원 나"), 8); // 단원마다 4시간 = 블록 2개
+  gc.units.forEach((u) => u.modules.forEach((mm, i) => { mm.title = u.title + " 블록" + (i + 1); mm.objectives = [mm.title + "의 핵심을 예시로 설명할 수 있다."]; }));
+  const titleOf = (p) => (p.match(/\[학습모듈\] (.+?) —/) || [])[1] || "";
+  const tries = {};
+  reset((p) => {
+    const t = titleOf(p);
+    tries[t] = (tries[t] || 0) + 1;
+    if (t === "단원 가 블록1" && tries[t] === 1) return Promise.reject(new Error("일시 오류")); // 한 번 실패 → 다시 시도로 성공
+    if (t === "단원 가 블록2") return Promise.reject(new Error("응답 없음"));            // 두 번 모두 실패 → 건너뜀
+    return WRITE;
+  });
+  const saved = [];
+  const r1 = await AI.generateUnit(gc, gc.units[0], null, { onModule: (mm, err) => saved.push(mm.title + (err ? "✗" : "✓")) });
+  eq(tries["단원 가 블록1"], 2, "실패한 학습모듈은 한 번 다시 시도");
+  ok(AI.moduleDone(gc.units[0].modules[0]), "다시 시도해 성공한 학습모듈은 교안 완료");
+  eq(r1.failed.length, 1, "두 번 실패한 학습모듈만 실패 목록에");
+  eq(r1.failed[0].module, "단원 가 블록2", "실패 목록에 학습모듈 이름");
+  ok(r1.made === gc.units[0].modules.length - 1, "실패해도 나머지 학습모듈은 계속 작성");
+  ok(saved.length === gc.units[0].modules.length && saved.includes("단원 가 블록2✗"), "학습모듈마다 저장 신호(실패 포함)");
+  ok(gc.units[0].outputs && gc.units[0].outputs.sessions.length === gc.units[0].hours, "일부 실패해도 산출물은 조립");
+  const restBefore = AI.remainingModules(gc).length;
+  eq(restBefore, 1 + gc.units[1].modules.length, "남은 학습모듈 = 실패 1 + 다른 단원 전부");
+  reset((p) => { tries[titleOf(p)] = (tries[titleOf(p)] || 0) + 1; return WRITE; });
+  const before1 = tries["단원 가 블록1"];
+  const rc = await AI.generateCourse(gc, null, {});
+  eq(tries["단원 가 블록1"], before1, "과정 전체 작성은 이미 된 학습모듈을 다시 쓰지 않음");
+  eq(rc.made, restBefore, "과정 전체: 남은 학습모듈만 작성");
+  eq(AI.remainingModules(gc).length, 0, "모든 단원 교안 완료");
+  ok(gc.units[1].outputs && gc.units[1].outputs.sessions.length > 0, "다른 단원도 산출물 조립");
+  gc.units[1].modules[0].content = null;
+  reset(() => { const e = new Error("중지했습니다."); e.code = "cancelled"; return Promise.reject(e); });
+  try { await AI.generateCourse(gc, null, {}); ok(false, "중지는 바로 멈춰야 함"); }
+  catch (e) { eq(e.code, "cancelled", "과정 전체 작성 중 중지는 다시 시도 없이 전파"); }
+
   if (failures.length) {
     console.error("❌ 실패 " + failures.length + "건 (통과 " + passed + "건)");
     failures.forEach((f) => console.error("  - " + f));

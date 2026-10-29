@@ -254,10 +254,12 @@
   function imageBlock(slide, s, key) {
     if (!s.visual) return;
     var img = slotSrc(key + "-img-" + s.num);
-    if (img) slide.addImage({ data: img, x: X(1180), y: Y(330), w: X(610), h: Y(500) });
+    // data: 는 그대로, 웹 주소(https…)는 path 로 넘겨야 pptxgenjs 가 받아 온다
+    if (img) slide.addImage(Object.assign(img.indexOf("data:") === 0 ? { data: img } : { path: img }, { x: X(1180), y: Y(330), w: X(610), h: Y(500) }));
     else {
       slide.addShape("roundRect", { x: X(1180), y: Y(330), w: X(610), h: Y(500), fill: { color: THEME.phFill }, line: { color: THEME.phLine, width: 3 }, rectRadius: 0.1 });
-      slide.addText("🖼  " + (s.visual || "이미지"), { x: X(1210), y: Y(380), w: X(550), h: Y(400), align: "center", valign: "middle", fontSize: PT(26), color: THEME.phText });
+      var vText = window.KBuilder.resolveVisual ? window.KBuilder.resolveVisual(s.visual).text : s.visual;
+      slide.addText("🖼  " + (vText || "이미지"), { x: X(1210), y: Y(380), w: X(550), h: Y(400), align: "center", valign: "middle", fontSize: PT(26), color: THEME.phText });
     }
   }
   function statementBody(slide, s, st) {

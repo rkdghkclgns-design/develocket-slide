@@ -161,15 +161,17 @@
     if (!S.course || S.showSetup) html += renderSetup();
     if (S.course && !S.showSetup) {
       html += renderSummary();
+      html += existingBanner();
       html += renderTabs();
       var u = unit();
       if (S.tab === "blocks") html += renderBlocks(u);
       else if (S.tab === "modules") html += K.courseWS ? K.courseWS.render(ctx()) : "";
       else if (S.tab === "ncs") html += renderNcs(u);
-      else html += renderOutputs(u);
+      else html += K.courseOutputs ? K.courseOutputs.render(u) : "";
     }
     root.innerHTML = html;
     root.classList.toggle("is-busy", S.busy);
+    if (K.autoImages) K.autoImages.wireSelects(root);
     if (K.courseWS && S.tab === "modules" && K.courseWS.after) K.courseWS.after(ctx());
   }
 
@@ -232,7 +234,7 @@
     var done = u.modules.filter(function (m) { return m.status === "완료"; }).length;
     var b = "";
     if (u.outputs) b += '<i title="교안 생성됨">📝</i>';
-    if (u.ncs && u.ncs.length) b += '<i title="NCS ' + u.ncs.length + '개 선정">🏷</i>';
+    if (u.ncs && u.ncs.length) b += u.ncsAuto ? '<i class="cs-unconf" title="NCS ' + u.ncs.length + '개 자동 배정 · 확정 전">🏷?</i>' : '<i title="NCS ' + u.ncs.length + '개 확정">🏷</i>';
     if (q) b += '<i title="문항 ' + q + '개">❓' + q + "</i>";
     if (done) b += '<i title="완료한 학습모듈">✓' + done + "/" + u.modules.length + "</i>";
     return b;
@@ -328,6 +330,7 @@
       '<button class="btn btn-ghost" data-act="ws-new" data-u="' + S.unit + '">＋ 블록(학습모듈) 추가</button>' +
       '<button class="btn btn-ghost" data-act="replan-unit"' + (aiReady("plan") ? "" : " disabled") + ">✨ 이 단원 블록 다시 설계</button>" +
       '<div class="cs-spacer"></div>' +
+      '<button class="btn btn-ghost" data-act="gen-course"' + (aiReady("write") && (restN() || extraN()) ? "" : " disabled") + ">📝 모든 단원 (남은 " + restN() + "개)</button>" +
       '<button class="btn btn-primary" data-act="gen-unit"' + (aiReady("write") ? "" : " disabled") + ">📝 이 단원 교안 생성 (교수안·교재·슬라이드)</button>" +
       "</div>" +
       '<p class="cs-hint">교안 생성: 블록마다 학습자용 교재(개요→학습목표→학습내용→체크리스트)와 강사용 교수안 단계, 슬라이드를 만듭니다. 이미 교재를 쓴 블록은 교재를 그대로 두고 교수안·슬라이드만 만듭니다. ' +
@@ -389,9 +392,12 @@
     var q = S.ncsQuery.trim();
     var found = q ? C.ncsSearch(q, 12, { perSubd: 6 }) : [];
     var direct = q ? (found.map(function (n) { return ncsItem(n, sel.indexOf(n.code) !== -1); }).join("") || '<p class="cs-muted">검색 결과가 없습니다.</p>') : "";
-    return '<div class="cs-card"><div class="cs-card-head"><h3>교과목 NCS — 단원 ' + (S.unit + 1) + ". " + esc(u.title) + '</h3><div class="cs-spacer"></div>' +
+    var auto = !!u.ncsAuto && !dirty && saved.length > 0;
+    return '<div class="cs-card' + (auto ? " cs-auto" : "") + '"><div class="cs-card-head"><h3>교과목 NCS — 단원 ' + (S.unit + 1) + ". " + esc(u.title) + "</h3>" +
+      (auto ? '<span class="cs-badge auto">자동 배정 · 확정 전</span>' : saved.length && !dirty ? '<span class="cs-muted">확정됨</span>' : "") + '<div class="cs-spacer"></div>' +
       '<button class="btn btn-ghost" data-act="ncs-cancel"' + (dirty ? "" : " disabled") + ">변경 취소</button>" +
-      '<button class="btn btn-primary" data-act="ncs-save"' + (dirty ? "" : " disabled") + ">저장</button></div>" +
+      (auto ? '<button class="btn btn-primary" data-act="ncs-confirm">✓ 확정</button>' : '<button class="btn btn-primary" data-act="ncs-save"' + (dirty ? "" : " disabled") + ">저장</button>") + "</div>" +
+      (auto ? '<p class="cs-sub">단원 학습목표에 맞는 능력단위를 적합도 순으로 먼저 배정했습니다. 맞으면 「확정」, 아니면 아래 추천·직접 선택에서 고친 뒤 「저장」하세요.</p>' : "") +
       '<p class="cs-sub">교과목(단원)에는 <b>능력단위</b>를, 학습모듈에는 <b>능력단위요소</b>를 대응시킵니다(요소는 ② 학습모듈 → NCS 탭). 하나의 교과목이 여러 능력단위를 묶을 수 있습니다.' + (dirty ? ' <b class="cs-warn">저장하지 않은 변경이 있습니다.</b>' : "") + "</p>" +
       '<div class="cs-sels">' + selected + "</div>" + candHtml + "</div>" +
       '<div class="cs-card"><div class="cs-card-head"><h3>AI 추천</h3><span class="cs-muted">' + (aiReady("plan") ? (K.AI.isMixed() ? "Claude·Gemini 교차 판단" : esc(aiName("plan"))) : "키워드 검색") + '</span><div class="cs-spacer"></div>' +
@@ -399,55 +405,6 @@
       '<div class="cs-card"><div class="cs-card-head"><h3>직접 선택</h3><input class="cs-search" id="cs-ncs-q" placeholder="능력단위·세분류 키워드 (예: 프롬프트, 저작권, 소셜미디어)" value="' + esc(S.ncsQuery) + '"></div>' +
       direct + '<p class="cs-foot">기준: NCS ' + esc((K.NCS && K.NCS.degree) || "") + "차 분류체계 참조 목록(" + esc((K.NCS && K.NCS.collectedAt) || "") + " ncs.go.kr 수집, " + ((K.NCS && K.NCS.units.length) || 0) +
       '개 능력단위). 분류번호는 현행 체계를 그대로 쓰며 개정 시 코드가 바뀔 수 있으니 사용 전 <a href="https://www.ncs.go.kr/unity/th03/ncsSearchMain.do" target="_blank" rel="noopener noreferrer">ncs.go.kr</a>에서 확인하세요.</p></div>';
-  }
-
-  /* ---------- ④ 산출물 — 차시(1차시 = 1시간)별 교수안·슬라이드 편성안 + 단원 교재 ---------- */
-  function sessionRows(u, o) {
-    // 조립한 뒤에는 조립 시점의 차시를, 조립 전에는 지금 블록 설계로 나눈 차시를 보여 준다
-    var list = o ? o.sessions : C.unitSessions(u).map(function (s, si, all) {
-      return { no: si + 1, title: C.sessionTitle(u, s), minutes: s.minutes, steps: C.sessionSteps(u, s, si, all.length) };
-    });
-    var rows = list.map(function (s, i) {
-      var act = o ? '<button class="cs-link" data-act="dl-sess" data-s="' + i + '" data-k="docMd">⤓ 교수안</button>' +
-        '<button class="cs-link" data-act="dl-sess" data-s="' + i + '" data-k="deckMd">⤓ 편성안</button>' +
-        '<button class="cs-link" data-act="open-review" data-s="' + i + '">빌드 →</button>' : "";
-      return "<tr><td class=\"cs-sess-no\"><b>" + s.no + "차시</b><span>" + esc(s.title) + "</span></td><td>" + C.fmtMin(s.minutes) + '</td><td class="cs-sess-steps">' +
-        s.steps.map(function (st) { return "<span><b>" + esc(st.label) + "</b> " + esc(st.text) + " <i>" + C.fmtMin(st.minutes) + "</i></span>"; }).join("") +
-        '</td><td class="cs-sess-act">' + act + "</td></tr>";
-    }).join("");
-    return { n: list.length, html: '<div class="cs-sess"><div class="cs-sess-head"><b>차시 구성</b><span class="cs-muted">1차시 = 1시간 · ' + list.length + "차시" +
-      (o ? "" : " · 조립 전 미리 보기") + '</span></div><div class="cs-tbl"><table class="cs-table"><thead><tr><th>차시</th><th>시간</th><th>진행 단계</th><th></th></tr></thead><tbody>' +
-      rows + "</tbody></table></div></div>" };
-  }
-  function renderOutputs(u) {
-    var o = u.outputs;
-    var lintN = u.modules.reduce(function (a, m) { return a + ((m.content && m.content.lint) || []).length; }, 0);
-    var written = u.modules.filter(function (m) { return m.content; }).length;
-    var qn = u.modules.reduce(function (a, m) { return a + m.questions.length; }, 0);
-    var ills = u.modules.reduce(function (a, m) { return a + (m.ills || []).filter(function (x) { return x.placement != null; }).length; }, 0);
-    var sess = sessionRows(u, o);
-    var card = function (icon, title, desc, key, file, btn) {
-      return '<div class="cs-out"><div class="cs-out-ic">' + icon + '</div><div class="cs-out-main"><b>' + title + "</b><p>" + desc + "</p></div>" +
-        '<button class="btn btn-ghost" data-act="dl-out" data-k="' + key + '" data-file="' + esc(file) + '"' + (o ? "" : " disabled") + ">⤓ " + (btn || "MD") + "</button></div>";
-    };
-    return '<div class="cs-card"><div class="cs-card-head"><h3>산출물 — 단원 ' + (S.unit + 1) + ". " + esc(u.title) + " (" + u.hours + "시간 · " + sess.n + "차시)</h3></div>" +
-      '<p class="cs-sub">' + (o ? "조립일 " + esc(o.generatedAt) + " · " : "아직 조립 전입니다. · ") + "교재 작성 블록 " + written + "/" + u.modules.length + " · NCS " + (u.ncs || []).length + "개 · 문항 " + qn + "개 · 배치한 삽화 " + ills + "개" +
-      (lintN ? ' · <span class="cs-warn">교재 검수 ' + lintN + "건</span>" : "") + "</p>" +
-      '<div class="cs-actions"><button class="btn btn-primary" data-act="gen-unit"' + (aiReady("write") ? "" : " disabled") + ">📝 " + (written ? "AI로 교수안·슬라이드 다시 작성" : "AI로 교안 작성") + "</button>" +
-      '<button class="btn btn-ghost" data-act="assemble">↻ 현재 내용으로 조립' + (written ? "" : "(템플릿)") + "</button></div>" +
-      sess.html +
-      card("📖", "교수안 — 차시별 " + sess.n + "개", "차시마다 기존 교수안 형식 — 도입 / 전개 N / 정리, 단계 제목에 소요 시간, 수업 흐름 표. 블록 도입·정리로 시작하거나 끝나지 않는 차시에는 5분 연결 단계를 넣습니다.", "doc", "교수안 - " + u.title + " (차시별).md", "전체 차시 MD") +
-      card("📘", "교재(교습안).md", "학습자용 — 블록마다 개요 → 학습목표 → 학습내용(삽화 포함) → 학습 후 체크리스트, 메타데이터(상태·소요 시간·툴·선행 모듈·NCS·변경 이력). 차시별 빌드에는 그 차시에 걸친 블록만 붙습니다.", "text", "교재 - " + u.title + ".md") +
-      card("🎬", "슬라이드 편성안 — 차시별 " + sess.n + "개", "기존 편성안 형식 — 차시마다 표지·목차·마무리, 블록 슬라이드는 블록이 걸친 차시에 시간 비율대로 나눕니다.", "deck", "슬라이드 편성안 - " + u.title + " (차시별).md", "전체 차시 MD") +
-      '<div class="cs-actions"><button class="btn btn-primary" data-act="open-review"' + (o ? "" : " disabled") + ">🎬 검토 후 슬라이드·문서로 빌드 (" + sess.n + "개 차시 · 드롭다운으로 이동) →</button>" +
-      '<button class="btn btn-ghost" data-act="dl-qcsv"' + (qn ? "" : " disabled") + ">⤓ 이 단원 문제은행 CSV</button></div></div>" +
-      '<div class="cs-card"><div class="cs-card-head"><h3>과정 전체</h3></div><div class="cs-actions">' +
-      '<button class="btn btn-primary" data-act="open-review-all"' + (S.course.units.some(function (x) { return x.outputs; }) ? "" : " disabled") +
-      '>🎬 조립된 단원 모두 빌드 (단원·차시 드롭다운으로 이동)</button>' +
-      '<button class="btn btn-ghost" data-act="dl-course">⤓ 과정 설계서.md (단원·블록 시간표)</button>' +
-      '<button class="btn btn-ghost" data-act="dl-all-text">⤓ 전체 교재.md</button>' +
-      '<button class="btn btn-ghost" data-act="dl-all-qcsv">⤓ 전체 문제은행 CSV</button></div>' +
-      '<p class="cs-foot">출제 이력·회차 결과·오답률 집계는 LMS에서 관리합니다(이 도구는 문항 자체만 만듭니다).</p></div>';
   }
 
   /* ================= 동작 ================= */
@@ -486,8 +443,30 @@
     var course = C.buildCourse(parsed, d.total, { target: d.target, tool: d.tool });
     S.course = C.ensureCourse(course); S.unit = 0; S.tab = "blocks"; S.showSetup = false; S.ncsPending = null; S.mod = null;
     save();
-    if (!useAi) { render(); return; }
-    run("AI 블록 설계 준비 중…", function (prog) { return K.courseAI.planCourse(course, prog).then(function () { C.ensureCourse(course); }); });
+    // 블록 설계(AI) 뒤 단원마다 NCS 능력단위를 먼저 자동 배정한다 — 확정은 ③ 교과목 NCS 에서
+    if (!useAi) { run("NCS 능력단위 자동 배정 중…", function (prog) { return assignAllNcs(course, prog); }); return; }
+    run("AI 블록 설계 준비 중…", function (prog) {
+      return K.courseAI.planCourse(course, prog).then(function () { C.ensureCourse(course); return assignAllNcs(course, prog); });
+    });
+  }
+
+  /* 빌드 전에 슬라이드 '이미지/시각' 제안으로 이미지를 자동 생성해 참고 이미지·슬라이드 칸에 넣는다 (Google 키·설정이 있을 때) */
+  function openWithImages(list, index) {
+    var A = K.autoImages;
+    if (!A || !A.count() || !A.available()) {
+      K.app.openReview({ parts: list, index: index, note: A ? A.summary(A.count() ? { skipped: "nokey" } : { skipped: "off" }) : "" });
+      return;
+    }
+    var jobs = A.countJobs(list);
+    if (jobs > 12 && !confirm("슬라이드 이미지 " + jobs + "장을 차례로 만듭니다(장당 10~30초). 지금 만들까요?\n[취소]를 누르면 이미지 없이 바로 검토 화면을 엽니다.")) {
+      K.app.openReview({ parts: list, index: index, note: "" });
+      return;
+    }
+    run("🖼 슬라이드 이미지 자동 생성 준비 중… (중지하면 만든 이미지까지만 넣고 엽니다)", function (prog, signal) {
+      return A.run(list, prog, function () { return !!(signal && signal.aborted); }).then(function (r) {
+        K.app.openReview({ parts: r.parts, index: index, note: A.summary(r) });
+      });
+    });
   }
 
   /* 검토·빌드 화면으로 넘길 차시 목록 — 드롭다운으로 차시를 오간다 (교재는 그 차시에 걸친 블록만) */
@@ -515,6 +494,58 @@
     return true;
   }
 
+  /* 기존 작성 내용에 새 기능(삽화 자동 생성·NCS 자동 배정)을 적용 — 한 번 누르면 예전 내용도 새 방식으로 */
+  function existingBanner() {
+    if (!K.courseAuto || S.busy || S.course.existingLater) return "";
+    var w = K.courseAuto.existingWork(S.course);
+    if (!w.modules.length && !w.units.length) return "";
+    var parts = [];
+    if (w.units.length) parts.push("단원 " + w.units.length + "개에 NCS 능력단위 자동 배정");
+    if (w.modules.length) parts.push("교재가 있는 블록 " + w.modules.length + "개에 삽화 그려 넣기·능력단위요소 자동 배정");
+    return '<div class="cs-card cs-existing"><div><b>✨ 기존 작성 내용에도 새 기능 적용</b><p class="cs-sub">' + esc(parts.join(" · ")) +
+      ". 자동 배정한 NCS 는 「확정 전」으로 들어가며 ③ 교과목 NCS·학습모듈 NCS 탭에서 확정합니다. 조립해 둔 산출물도 다시 조립합니다.</p></div>" +
+      '<div class="cs-spacer"></div><button class="btn btn-primary" data-act="apply-existing">적용하기</button><button class="btn btn-ghost" data-act="apply-later">나중에</button></div>';
+  }
+  function extraN() { var w = K.courseAuto ? K.courseAuto.existingWork(S.course) : { modules: [], units: [] }; return w.modules.length + w.units.length; }
+
+  /* 교안 작성 — 블록마다 저장하고, 실패한 블록은 건너뛰고 끝에 알린다 */
+  function restN() { return K.courseAI.remainingModules(S.course).length; }
+  function genUnit(onlyMissing) {
+    var u = unit();
+    if (u.modules.some(function (m) { return !m.objectives.length; }) && !confirm("학습목표가 없는 블록이 있습니다. 블록 제목 기준으로 작성할까요?")) return;
+    run("교안 작성 준비 중…", function (prog) {
+      return K.courseAI.generateUnit(S.course, u, prog, { onlyMissing: onlyMissing, onModule: function () { save(); } }).then(function (r) { S.tab = "outputs"; reportGen(r); });
+    });
+  }
+  function reportGen(r) {
+    if (!r.failed.length) { toast("학습모듈 " + r.made + "개의 교재·교수안·슬라이드를 만들었습니다." + (r.filled ? " 기존 교안 " + r.filled + "개는 삽화·NCS 를 채웠습니다." : "")); return; }
+    S.error = "학습모듈 " + r.failed.length + "개를 만들지 못했습니다 — " + r.failed.slice(0, 3).map(function (f) { return "「" + f.module + "」(" + f.error.slice(0, 80) + ")"; }).join(", ") +
+      (r.failed.length > 3 ? " 외 " + (r.failed.length - 3) + "개" : "") + ". 만든 " + r.made + "개는 저장했습니다. 「남은 블록 작성」으로 다시 시도하세요.";
+  }
+
+  /* ③ 교과목 NCS 를 처음 열었는데 선정도 추천도 없으면 한 번 자동 배정한다 (예전에 만든 과정 포함) */
+  function autoUnitNcs() {
+    var u = unit();
+    if (S.tab !== "ncs" || S.busy || !u || !K.courseAuto || u.ncsAutoTried || (u.ncs || []).length || (u.ncsDraft || []).length) return;
+    run("NCS 능력단위 자동 배정 중…", function (prog) { return assignUnitNcs(u, function (l) { prog(l); }); });
+  }
+  /* 단원 하나 자동 배정 — 화면의 선택 대기를 비우고(새 배정이 '저장 안 됨'으로 보이지 않게) 산출물을 맞춘다. 중지가 아닌 실패는 알리고 넘어간다 */
+  function assignUnitNcs(u, onLabel) {
+    return K.courseAuto.assignUnit(S.course, u, onLabel).then(function () {
+      S.ncsPending = null;
+      if (u.outputs) K.courseAI.buildOutputs(S.course, u);
+    }).catch(function (e) {
+      if (K.courseAuto.isCancel(e)) throw e;
+      toast("NCS 자동 배정에 실패했습니다: " + ((e && e.message) || e) + " — ③ 교과목 NCS에서 다시 추천하세요.");
+    });
+  }
+  function assignAllNcs(course, prog) {
+    return K.courseAuto.assignUnits(course, prog).then(function (r) {
+      S.ncsPending = null;
+      if (r.fail) toast("단원 " + r.fail + "개는 NCS 자동 배정에 실패했습니다. ③ 교과목 NCS에서 다시 추천하세요.");
+    });
+  }
+
   var actions = {
     "clear-error": function () { S.error = ""; render(); },
     "busy-stop": function () { if (S.abort) S.abort.abort(); },
@@ -528,8 +559,8 @@
     },
     "plan-ai": function () { startCourse(true); },
     "plan-basic": function () { startCourse(false); },
-    "pick-unit": function (el) { S.unit = Number(el.dataset.u); S.ncsPending = null; save(); render(); },
-    "tab": function (el) { S.tab = el.dataset.tab; save(); render(); },
+    "pick-unit": function (el) { S.unit = Number(el.dataset.u); S.ncsPending = null; save(); render(); autoUnitNcs(); },
+    "tab": function (el) { S.tab = el.dataset.tab; save(); render(); autoUnitNcs(); },
     "fit-hours": function () {
       var c = S.course;
       var hrs = C.allocateHours(c.units.length, c.totalHours, c.units.map(function (u) { return u.hours; }));
@@ -558,24 +589,42 @@
       if (!confirm("이 단원의 블록을 새로 설계합니다. 지금 블록 " + old.length + "개(교재·NCS·삽화·문항 포함)는 휴지통으로 옮겨 " + TRASH_DAYS + "일 동안 되살릴 수 있습니다. 계속할까요?")) return;
       run("단원 블록 다시 설계 중… (" + aiName("plan") + ")", function () {
         return K.courseAI.planUnit(S.course, u).then(function () {
+          // 이전 블록을 먼저 휴지통에 — 다음 단계(NCS 자동 배정)에서 중지하거나 창을 닫아도 남는다
           var at = Date.now();
           S.course.trash = (S.course.trash || []).concat(old.map(function (m) { return { module: m, unitId: u.id, unitTitle: u.title, at: at }; }));
           if (S.mod && !locate(S.mod)) S.mod = null;
+          save();
           toast("새 블록으로 바꿨습니다. 이전 블록 " + old.length + "개는 휴지통에 있습니다.");
+          if (u.ncsAuto || !(u.ncs || []).length) return assignUnitNcs(u);
         });
       });
     },
-    "gen-unit": function () {
-      var u = unit();
-      if (u.modules.some(function (m) { return !m.objectives.length; }) && !confirm("학습목표가 없는 블록이 있습니다. 블록 제목 기준으로 작성할까요?")) return;
-      run("교안 작성 준비 중…", function (prog) {
-        return K.courseAI.generateUnit(S.course, u, prog).then(function () { S.tab = "outputs"; });
+    "apply-existing": function () {
+      run("기존 내용 보강 준비 중…", function (prog) {
+        return K.courseAuto.applyExisting(S.course, prog, function () { save(); }).then(function (r) {
+          S.ncsPending = null;
+          toast("기존 내용에 적용했습니다 — 단원 " + r.units + "개 · 블록 " + r.modules + "개" + (r.fail ? " (실패 " + r.fail + "개는 다시 눌러 재시도)" : "") + ". NCS 는 확정 전 상태입니다.");
+        });
+      });
+    },
+    "apply-later": function () { S.course.existingLater = true; save(); render(); },
+    "gen-unit": function () { genUnit(false); },
+    "gen-unit-rest": function () { genUnit(true); },
+    "gen-course": function () {
+      var rest = K.courseAI.remainingModules(S.course), extra = extraN();
+      if (!rest.length && !extra) { toast("모든 학습모듈의 교안이 이미 있습니다."); return; }
+      var units = rest.map(function (x) { return x.unit.id; }).filter(function (id, i, a) { return a.indexOf(id) === i; }).length;
+      var noObj = rest.filter(function (x) { return !x.module.objectives.length; }).length;
+      if (!confirm((rest.length ? "남은 학습모듈 " + rest.length + "개(단원 " + units + "개)의 교재·교수안·슬라이드를 차례로 만듭니다." : "") + (extra ? " 기존 내용 " + extra + "건에는 삽화·NCS 자동 배정을 채웁니다." : "") + " 블록마다 1~3분 걸리고, 블록을 마칠 때마다 저장하므로 중간에 「중지」해도 만든 것은 남습니다." +
+        (noObj ? "\n학습목표가 없는 블록 " + noObj + "개는 블록 제목 기준으로 씁니다." : "") + "\n계속할까요?")) return;
+      run("모든 단원 교안 작성 준비 중…", function (prog) {
+        return K.courseAI.generateCourse(S.course, prog, { onModule: function () { save(); } }).then(function (r) { S.tab = "outputs"; reportGen(r); });
       });
     },
     "assemble": function () { K.courseAI.buildOutputs(S.course, unit()); save(); render(); },
     "open-review": function (el) {
       var u = unit();
-      if (u.outputs && K.app) K.app.openReview({ parts: sessionParts(u, ""), index: Number(el.dataset.s) || 0 });
+      if (u.outputs && K.app) openWithImages(sessionParts(u, ""), Number(el.dataset.s) || 0);
     },
     "open-review-all": function () {
       var list = [], start = 0;
@@ -584,12 +633,16 @@
         if (i === S.unit) start = list.length;
         list = list.concat(sessionParts(u, (i + 1) + "단원 "));
       });
-      if (list.length && K.app) K.app.openReview({ parts: list, index: start });
+      if (list.length && K.app) openWithImages(list, start);
+    },
+    "auto-art": function (el) {
+      S.course.auto = Object.assign({}, S.course.auto, { art: !!el.checked });
+      save(); render(); // 체크박스 클릭은 기본 동작을 막으므로 다시 그려 상태를 보여 준다
     },
     "dl-out": function (el) {
       var u = unit(), o = u.outputs, k = el.dataset.k;
       if (!o) return;
-      var md = k === "doc" ? C.sessionsDocMd(S.course, u, o) : k === "deck" ? C.sessionsDeckMd(S.course, u, o) : o.textMd;
+      var md = k === "doc" ? C.sessionsDocMd(S.course, u, o) : k === "deck" ? C.sessionsDeckMd(S.course, u, o) : C.textbookMd(S.course, u);
       download(safeName(el.dataset.file.replace(/\.md$/, "")) + ".md", md);
     },
     "dl-sess": function (el) {
@@ -628,16 +681,26 @@
       (u.ncsDraft || []).forEach(function (n) { keep[n.code] = n; });
       u.ncs = pending(u).map(function (code) {
         var n = keep[code] || C.ncsUnit(code);
-        if (!n) return null;
-        return { code: n.code, name: n.name, level: n.level, subd: n.subd, path: n.path, objectives: n.objectives || [], reason: n.reason || "", score: n.score != null ? n.score : n.match, cross: !!n.cross };
+        return n ? K.courseAuto.unitEntry(n) : null;
       }).filter(function (n) { return n && n.code; });
+      u.ncsAuto = false; // 사용자가 고쳐 저장 = 확정
       S.ncsPending = null;
       if (u.outputs) K.courseAI.buildOutputs(S.course, u);
       save(); render();
     },
+    "ncs-confirm": function () {
+      var u = unit();
+      u.ncsAuto = false; S.ncsPending = null;
+      if (u.outputs) K.courseAI.buildOutputs(S.course, u);
+      save(); render(); toast("교과목 NCS 능력단위를 확정했습니다.");
+    },
     "ncs-recommend": function () {
       var u = unit();
       run("NCS 능력단위 추천 중…", function (prog) {
+        // 아직 확정 전이면 새 추천으로 다시 자동 배정, 확정했으면 추천 목록만 바꾼다
+        var saved = (u.ncs || []).map(function (n) { return n.code; }).join();
+        var unsaved = S.ncsPending && S.ncsPending.join() !== saved;
+        if (!unsaved && (u.ncsAuto || !(u.ncs || []).length)) return assignUnitNcs(u, function (l) { prog(l); });
         return K.courseAI.recommendNcs(S.course, u, function (l) { prog(l); }).then(function (list) { u.ncsDraft = list; });
       });
     }

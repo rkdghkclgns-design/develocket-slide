@@ -523,7 +523,7 @@
     });
     L.push("| NCS 능력단위(교과목 대응) | " + (refs.map(ncsLine).join("<br>") || "-") + " |");
     var els = ((m.ncs && m.ncs.chosen) || []).map(function (code) { var f = K.ncsRef ? K.ncsRef.find(code) : null; return code + (f ? " " + (f.elem ? f.elem.name : f.unit.name) : ""); });
-    L.push("| NCS 능력단위요소(학습모듈 대응) | " + (els.join("<br>") || "-") + " |");
+    L.push("| NCS 능력단위요소(학습모듈 대응) | " + (els.join("<br>") || "-") + (els.length && m.ncs && m.ncs.auto ? "<br>(자동 배정 · 확정 전)" : "") + " |");
     var log = (m.changelog || []).slice(-5).map(function (x) { var d = new Date(x.at); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2) + " " + x.t; });
     L.push("| 변경 이력 | " + (log.join("<br>") || todayStr() + " 초안 작성") + " |", "");
     L.push("## 개요", "", c.overview || "(이 학습모듈을 왜 배우는지 — 문제 상황 / 해결할 것 / 학습 후 가능해지는 것)", "");

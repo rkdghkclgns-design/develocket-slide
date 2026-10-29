@@ -9,7 +9,7 @@
   var C = K.course;
   if (!C) return;
   var MIN_PER_HOUR = C.MIN_PER_HOUR, fmtMin = C.fmtMin, todayStr = C.todayStr, ncsLine = C.ncsLine;
-  var textbookMd = C.textbookMd, textbookModuleMd = C.textbookModuleMd;
+  var textbookModuleMd = C.textbookModuleMd;
 
   /* 단원의 진행 단계를 시간 순서로 이어 붙여 60분마다 자른다.
    * 한 단계가 차시 경계에 걸치면 앞부분(다음 차시에 계속)과 이어지는 부분(이어서)으로 나눈다.
@@ -143,7 +143,7 @@
       var here = s.items.filter(function (x) { return x.module === mi; }).reduce(function (a, x) { return a + x.minutes; }, 0);
       return m.title + "(이 차시 " + fmtMin(here) + " / 블록 " + fmtMin(m.minutes) + ")";
     }).join(", ") + " |");
-    L.push("| NCS 능력단위 | " + (refs.map(ncsLine).join(", ") || "-") + " |", "");
+    L.push("| NCS 능력단위 | " + (refs.map(ncsLine).join(", ") || "-") + (refs.length && unit.ncsAuto ? " (자동 배정 · 확정 전)" : "") + " |", "");
     L.push("## 수업 흐름 한눈에 보기", "", "| 단계 | 시간 | 핵심 |", "|---|---|---|");
     steps.forEach(function (st) { L.push("| " + st.label + " | " + fmtMin(st.minutes) + " | " + st.text + " |"); });
     L.push("| **합계** | **" + fmtMin(s.minutes) + "** | " + (si + 1) + "차시 |", "");
@@ -262,7 +262,8 @@
     return L.join("\n");
   }
 
-  /* 단원 산출물 조립 — 차시별 교수안·슬라이드 편성안 + 단원 교재 (조립 시점의 내용을 보관) */
+  /* 단원 산출물 조립 — 차시별 교수안·슬라이드 편성안 (조립 시점의 내용을 보관)
+     교재는 학습모듈이 원본이고 삽화(SVG)로 커질 수 있어 보관하지 않고 내려받을 때 만든다 */
   var OUTPUTS_V = 2;
   function assembleOutputs(course, unit, generatedAt) {
     var date = generatedAt || todayStr();
@@ -271,7 +272,6 @@
     return {
       v: OUTPUTS_V,
       generatedAt: date,
-      textMd: textbookMd(course, unit),
       sessions: sessions.map(function (s, si) {
         return {
           no: si + 1, title: sessionTitle(unit, s), minutes: s.minutes,
@@ -334,6 +334,7 @@
     baseEnsure(c);
     ((c && c.units) || []).forEach(function (u) {
       if (u.outputs && u.outputs.v !== OUTPUTS_V) u.outputs = assembleOutputs(c, u, u.outputs.generatedAt);
+      else if (u.outputs && u.outputs.textMd != null) { u.outputs = Object.assign({}, u.outputs); delete u.outputs.textMd; } // 교재는 내려받을 때 만든다
     });
     return c;
   }

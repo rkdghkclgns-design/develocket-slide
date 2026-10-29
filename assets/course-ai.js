@@ -1,7 +1,8 @@
 /* course-ai.js — 과정 설계의 AI 단계 (프롬프트·응답 해석)
  *   planCourse      : 과정 목표 + 단원별 시간 제안 + 단원→학습모듈 블록(목표·흐름·시간)       [plan]
  *   recommendNcs    : 세분류 1차 선택 → 참조 목록 후보 중 능력단위 추천(혼합 모드는 두 모델 합의) [plan]
- *   generateUnit    : 학습모듈별 교재·교수안 작성 [write] + 슬라이드 편성 [혼합 모드는 fast]
+ *   generateUnit    : 학습모듈별 교재·교수안 작성 [write] + 슬라이드 편성 [혼합 모드는 fast] — 실패한 학습모듈은 다시 시도 후 건너뛰고 계속
+ *   generateCourse  : 모든 단원의 남은 학습모듈만 이어서 작성
  *   generateQuestions / reviewQuestions : 문항 초안 [qgen] → 다른 모델이 교차 검수 [review]
  * 공급자 선택은 ai-client.js(K.ai) 가 역할(role)로 결정한다. */
 (function () {
@@ -324,7 +325,19 @@
     return L.join("\n");
   }
 
-  function generateModule(course, unit, mi) {
+  /* 학습모듈 하나 작성 후 삽화 자동 생성·능력단위요소 자동 배정(course-auto.js) — onLabel(진행 문구) */
+  function generateModule(course, unit, mi, onLabel) {
+    // 교재를 새로 쓴 경우에만 — 교재를 유지하고 교수안·슬라이드만 만들 때는 사용자가 지운 삽화를 다시 그리지 않는다
+    var fresh = !hasTextbook(unit.modules[mi]);
+    // 교재를 유지한 경우에도 아직 한 번도 보강하지 않은 학습모듈이면 삽화·NCS 를 채운다 (학습모듈마다 한 번)
+    return writeModule(course, unit, mi).then(function (m) {
+      var A = K.courseAuto;
+      if (!A) return m;
+      if (fresh) return A.afterTextbook(course, unit, m, onLabel).then(function () { return m; });
+      return A.needsFill(course, m) ? A.fillModule(course, unit, m, onLabel).then(function () { return m; }) : m;
+    });
+  }
+  function writeModule(course, unit, mi) {
     var m = unit.modules[mi];
     var split = mixed();
     if (hasTextbook(m)) {
@@ -367,20 +380,89 @@
     return unit.outputs;
   }
 
-  function generateUnit(course, unit, onProgress) {
+  /* 학습모듈 교안이 다 됐는지 — 교재와 교수안 지침이 있으면 */
+  function moduleDone(m) {
+    return hasTextbook(m) && ((m.content && m.content.guide) || []).some(function (g) { return String(g || "").trim(); });
+  }
+  function isCancel(e) { return !!(e && (e.code === "cancelled" || e.name === "AbortError")); }
+  function errText(e) { return (e && e.message) || String(e); }
+
+  /* 단원의 학습모듈마다 교재·교수안·슬라이드 작성 → 차시별 산출물 조립
+     한 학습모듈이 실패해도 한 번 다시 시도하고, 그래도 안 되면 건너뛰고 나머지를 계속 만든다(중지는 바로 멈춤).
+     opts.onlyMissing: 교안이 다 된 학습모듈은 건너뜀 · opts.label: 진행 문구 앞머리 · opts.onModule(m, err): 학습모듈마다(저장 등)
+     결과: {made, failed:[{unit, module, error}]} */
+  function generateUnit(course, unit, onProgress, opts) {
+    opts = opts || {};
     var prog = onProgress || function () {};
     var total = unit.modules.length;
-    var chain = Promise.resolve();
+    var made = 0, filled = 0, failed = [], chain = Promise.resolve();
+    var A = K.courseAuto;
     unit.modules.forEach(function (m, mi) {
       chain = chain.then(function () {
-        prog(mi, total, "학습모듈 " + (mi + 1) + "/" + total + " 작성 중… (" + m.title + " · " + (mixed() ? "Claude 교재 → Gemini 슬라이드" : who("write")) + ")");
-        return generateModule(course, unit, mi);
+        if (opts.onlyMissing && moduleDone(m)) {
+          // 이미 교안이 있는 학습모듈: 새 기능(삽화·NCS)만 아직 없으면 채운다
+          if (!A || !A.needsFill(course, m)) return;
+          var fh = (opts.label || "") + "학습모듈 " + (mi + 1) + "/" + total + " 보강";
+          prog(mi, total, fh + " · " + m.title);
+          return A.fillModule(course, unit, m, function (l) { prog(mi, total, fh + " · " + l); }).then(function () {
+            filled++;
+            if (opts.onModule) opts.onModule(m, null);
+          }, function (e) {
+            if (isCancel(e)) throw e;
+            failed.push({ unit: unit.title, module: m.title, error: errText(e) });
+          });
+        }
+        var head = (opts.label || "") + "학습모듈 " + (mi + 1) + "/" + total;
+        var once = function () { return generateModule(course, unit, mi, function (l) { prog(mi, total, head + " · " + l); }); };
+        prog(mi, total, head + " 작성 중… (" + m.title + " · " + (mixed() ? "Claude 교재 → Gemini 슬라이드" : who("write")) + ")");
+        return once().catch(function (e) {
+          if (isCancel(e)) throw e;
+          prog(mi, total, head + " 다시 시도 중… (" + errText(e).slice(0, 60) + ")");
+          return once();
+        }).then(function () {
+          made++;
+          if (opts.onModule) opts.onModule(m, null);
+        }, function (e) {
+          if (isCancel(e)) throw e;
+          failed.push({ unit: unit.title, module: m.title, error: errText(e) });
+          if (opts.onModule) opts.onModule(m, e);
+        });
       });
     });
     return chain.then(function () {
       prog(total, total, "차시별 교수안·편성안과 교재 조립 중…");
-      return buildOutputs(course, unit);
+      buildOutputs(course, unit);
+      return { made: made, filled: filled, failed: failed };
     });
+  }
+
+  /* 교안이 아직 안 된 학습모듈 [{unit, module}] */
+  function remainingModules(course) {
+    var out = [];
+    (course.units || []).forEach(function (u) { (u.modules || []).forEach(function (m) { if (!moduleDone(m)) out.push({ unit: u, module: m }); }); });
+    return out;
+  }
+  /* 과정 전체: 단원마다 남은 학습모듈만 작성 — 중간에 멈춰도 다시 누르면 남은 것부터 이어서 */
+  function generateCourse(course, onProgress, opts) {
+    opts = opts || {};
+    var units = course.units || [], made = 0, filled = 0, failed = [], chain = Promise.resolve();
+    var A = K.courseAuto, prog = onProgress || function () {};
+    units.forEach(function (u, ui) {
+      chain = chain.then(function () {
+        var head = "단원 " + (ui + 1) + "/" + units.length + " · ";
+        // 기존 단원에 NCS 능력단위가 없으면 먼저 자동 배정 (확정은 사용자가)
+        var ncs = A && A.needsUnitNcs(u)
+          ? A.assignUnit(course, u, function (l) { prog(0, 1, head + "NCS 능력단위 자동 배정 — " + l); }).catch(function (e) { if (isCancel(e)) throw e; })
+          : Promise.resolve();
+        return ncs.then(function () {
+          var work = u.modules.some(function (m) { return !moduleDone(m) || (A && A.needsFill(course, m)); });
+          if (!work) { if (u.outputs) buildOutputs(course, u); return; }
+          return generateUnit(course, u, onProgress, { onlyMissing: true, label: head, onModule: opts.onModule })
+            .then(function (r) { made += r.made; filled += r.filled; failed = failed.concat(r.failed); });
+        });
+      });
+    });
+    return chain.then(function () { return { made: made, filled: filled, failed: failed }; });
   }
 
   /* ================= 4. 문제은행 ================= */
@@ -555,6 +637,7 @@
     setCallContext: setCallContext, aicall: aicall,
     planCourse: planCourse, planUnit: planUnit, recommendNcs: recommendNcs,
     generateUnit: generateUnit, generateModule: generateModule, buildOutputs: buildOutputs, hasTextbook: hasTextbook,
+    generateCourse: generateCourse, remainingModules: remainingModules, moduleDone: moduleDone,
     generateQuestions: generateQuestions, reviewQuestions: reviewQuestions, toQuestion: toQuestion,
     _parseModuleWrite: parseModuleWrite, _splitMarkers: splitMarkers
   };

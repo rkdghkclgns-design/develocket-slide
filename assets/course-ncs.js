@@ -115,9 +115,13 @@
         '</div><div class="mono cs-muted">' + esc(c) + '</div></div><button class="cs-x" data-act="nm-toggle" data-code="' + esc(c) + '" title="선택 해제/되살리기">✕</button></div>';
     }).join("");
     var uc = Object.keys(units);
-    return '<div class="cs-card' + (dirty ? " cs-dirty" : "") + '"><div class="cs-card-head"><h3>NCS 선정</h3>' +
-      (dirty ? '<span class="cs-badge warn">저장 안 됨 · 추가 ' + added.length + " · 해제 " + removed.length + "</span>" : saved.length ? '<span class="cs-muted">저장됨</span>' : "") +
-      '<div class="cs-spacer"></div><button class="btn btn-ghost" data-act="nm-revert"' + (dirty ? "" : " disabled") + '>변경 취소</button><button class="btn btn-primary" data-act="nm-save"' + (dirty ? "" : " disabled") + ">저장</button></div>" +
+    var auto = !!m.ncs.auto && !dirty && saved.length > 0;
+    return '<div class="cs-card' + (dirty ? " cs-dirty" : auto ? " cs-auto" : "") + '"><div class="cs-card-head"><h3>NCS 선정</h3>' +
+      (dirty ? '<span class="cs-badge warn">저장 안 됨 · 추가 ' + added.length + " · 해제 " + removed.length + "</span>"
+        : auto ? '<span class="cs-badge auto">자동 배정 · 확정 전</span>' : saved.length ? '<span class="cs-muted">확정됨</span>' : "") +
+      '<div class="cs-spacer"></div><button class="btn btn-ghost" data-act="nm-revert"' + (dirty ? "" : " disabled") + ">변경 취소</button>" +
+      (auto ? '<button class="btn btn-primary" data-act="nm-confirm">✓ 확정</button>' : '<button class="btn btn-primary" data-act="nm-save"' + (dirty ? "" : " disabled") + ">저장</button>") + "</div>" +
+      (auto ? '<p class="cs-sub">교재를 분석해 적합도가 높은 항목을 먼저 배정했습니다. 맞으면 「확정」, 아니면 아래에서 고친 뒤 「저장」하세요.</p>' : "") +
       (all.length ? list + (uc.length ? '<div class="cs-uc"><div class="cs-uc-h">교과목 대응 후보 (능력단위)</div>' + uc.map(function (u) { return '<div class="cs-uc-row"><span>' + esc(units[u] || u) + '</span><span class="mono cs-muted">' + esc(u) + "</span></div>"; }).join("") + "</div>" : "")
         : '<p class="cs-sub">AI 추천이나 직접 선택에서 체크한 항목이 여기에 모입니다. 「저장」을 눌러야 반영됩니다.</p>') + "</div>";
   }
@@ -214,9 +218,16 @@
     "nm-save": function (el, c) {
       var m = c.module, P = pending(m);
       m.ncs.chosen = P.slice();
-      K.course.logChange(m, "NCS 대응 변경 (" + P.length + "개)");
+      m.ncs.auto = false; // 사용자가 고쳐 저장 = 확정
+      K.course.logChange(m, "NCS 대응 변경·확정 (" + P.length + "개)");
       ui.pend = null;
       C().save(); C().render();
+    },
+    "nm-confirm": function (el, c) {
+      var m = c.module;
+      m.ncs.auto = false;
+      K.course.logChange(m, "NCS 자동 배정 확정 (" + (m.ncs.chosen || []).length + "개)");
+      C().save(); C().render(); C().toast("NCS 능력단위요소를 확정했습니다.");
     },
     "nm-reclow": function () { ui.recLow = !ui.recLow; C().render(); },
     "nm-recommend": function (el, c) {
@@ -269,6 +280,24 @@
   }
 
   K.courseTabs = K.courseTabs || {};
-  K.courseTabs.ncs = { label: "NCS", render: render, actions: actions, input: input,
-    badge: function (m) { return (m.ncs.chosen || []).length ? '<span class="cs-cnt">' + m.ncs.chosen.length + "</span>" : ""; } };
+  /* 처음 열었을 때 교재는 있는데 선정·추천이 없으면 한 번 자동 배정한다 (확정은 사용자가) */
+  function after(c) {
+    var m = c.module;
+    if (!m || !K.courseAuto || C().S.busy || m.ncs.autoTried || (m.ncs.chosen || []).length || (m.ncs.recs || []).length) return;
+    if (!m.objectives.length || !K.courseAI.hasTextbook(m)) return;
+    m.ncs.autoTried = true;
+    setTimeout(function () {
+      C().run("NCS 능력단위요소 자동 배정 중…", function () {
+        return K.courseAuto.assignModule(c.course, c.unit, m).then(function (did) {
+          C().toast(did ? "적합도가 높은 능력단위요소를 자동 배정했습니다. 확인 후 「확정」하세요." : "자동 배정할 만한 항목을 찾지 못했습니다. 직접 선택하세요.");
+        });
+      });
+    }, 0);
+  }
+
+  K.courseTabs.ncs = { label: "NCS", render: render, actions: actions, input: input, after: after,
+    badge: function (m) {
+      var n = (m.ncs.chosen || []).length;
+      return n ? '<span class="cs-cnt' + (m.ncs.auto ? " auto" : "") + '" title="' + (m.ncs.auto ? "자동 배정 · 확정 전" : "확정됨") + '">' + n + (m.ncs.auto ? "?" : "") + "</span>" : "";
+    } };
 })();
