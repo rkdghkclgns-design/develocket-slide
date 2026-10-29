@@ -37,6 +37,7 @@ function load(ctx, file) { vm.runInContext(fs.readFileSync(path.join(ASSETS, fil
 
 const ctx = sandbox();
 load(ctx, "ncs-catalog.js");
+load(ctx, "course-rules.js");
 load(ctx, "course-model.js");
 const C = ctx.KBuilder.course;
 const NCS = ctx.KBuilder.NCS;

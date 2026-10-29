@@ -72,20 +72,80 @@
     return ai.model;
   }
 
-  function callGemini(prompt, role) {
+  /* 사용자 중지(signal)와 시간 초과를 하나의 AbortController 로 묶는다 */
+  function linkedAbort(signal, ms) {
+    var ac = new AbortController();
+    var state = { timedOut: false };
+    var timer = setTimeout(function () { state.timedOut = true; ac.abort(); }, ms);
+    if (signal) {
+      if (signal.aborted) ac.abort();
+      else signal.addEventListener("abort", function () { ac.abort(); });
+    }
+    return { signal: ac.signal, state: state, done: function () { clearTimeout(timer); } };
+  }
+  function cancelled() { var e = new Error("중지했습니다."); e.code = "cancelled"; return e; }
+
+  /* Gemini — SSE 스트리밍으로 받아 진행(글자 수)을 알린다. 이미지는 inlineData 로 함께 보낸다 */
+  function callGemini(prompt, role, opts) {
+    opts = opts || {};
     var ai = cfg();
-    var url = ai.apiBase + "/models/" + encodeURIComponent(geminiModelFor(role)) + ":generateContent";
-    return fetchWithTimeout(url, {
+    var url = ai.apiBase + "/models/" + encodeURIComponent(geminiModelFor(role)) + ":streamGenerateContent?alt=sse";
+    var parts = [{ text: prompt }].concat((opts.images || []).map(function (im) { return { inlineData: { mimeType: im.mime, data: im.data } }; }));
+    var ab = linkedAbort(opts.signal, 180000);
+    return fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": ai.getKey() },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-    }, 120000).then(function (res) {
-      return res.text().then(function (raw) {
-        var parts = geminiParse(raw, res, "AI 응답이 비어 있습니다.");
-        var text = parts.map(function (p) { return p.text || ""; }).join("");
-        if (!text.trim()) throw new Error("AI 응답이 비어 있습니다.");
-        return text;
-      });
+      body: JSON.stringify({ contents: [{ parts: parts }] }),
+      signal: ab.signal
+    }).then(function (res) {
+      if (!res.ok || !res.body || !res.body.getReader) {
+        return res.text().then(function (raw) {
+          var ps = geminiParse(raw, res, "AI 응답이 비어 있습니다.");
+          return ps.map(function (p) { return p.text || ""; }).join("");
+        });
+      }
+      var reader = res.body.getReader(), dec = new TextDecoder(), buf = "", text = "";
+      function pump() {
+        return reader.read().then(function (r) {
+          if (r.done) return text;
+          buf += dec.decode(r.value, { stream: true });
+          var lines = buf.split("\n");
+          buf = lines.pop();
+          lines.forEach(function (line) {
+            if (line.indexOf("data:") !== 0) return;
+            try {
+              var j = JSON.parse(line.slice(5));
+              var ps = (j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || [];
+              ps.forEach(function (p) { if (p.text) text += p.text; });
+            } catch (e) {}
+          });
+          if (opts.onChars) opts.onChars(text.length);
+          return pump();
+        });
+      }
+      return pump();
+    }).then(function (text) {
+      ab.done();
+      if (!String(text).trim()) throw new Error("AI 응답이 비어 있습니다.");
+      return text;
+    }, function (err) {
+      ab.done();
+      if (err && err.name === "AbortError") throw ab.state.timedOut ? new Error("응답 시간이 초과됐어요. 잠시 후 다시 시도해 주세요.") : cancelled();
+      throw err;
+    });
+  }
+
+  /* Blob/File → {mime, data(base64)} — 이미지 입력용 */
+  function blobToImage(blob) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var s = String(fr.result || "");
+        var i = s.indexOf(",");
+        resolve({ mime: blob.type || "image/png", data: s.slice(i + 1) });
+      };
+      fr.onerror = function () { reject(new Error("이미지 파일을 읽지 못했습니다.")); };
+      fr.readAsDataURL(blob);
     });
   }
 
@@ -116,25 +176,31 @@
     return err instanceof Error ? err : new Error(String(err));
   }
 
-  function callClaude(prompt, role) {
+  function callClaude(prompt, role, opts) {
+    opts = opts || {};
     var ai = cfg();
     return loadClaudeSdk().then(function (Anthropic) {
       var client = new Anthropic({ apiKey: ai.getClaudeKey(), dangerouslyAllowBrowser: true, maxRetries: 2 });
       var model = ai.claudeModel;
+      var content = (opts.images || []).map(function (im) {
+        return { type: "image", source: { type: "base64", media_type: im.mime, data: im.data } };
+      }).concat([{ type: "text", text: prompt }]);
       var params = {
         model: model,
         max_tokens: 64000,
         output_config: { effort: CLAUDE_EFFORT[role] || "medium" },
-        messages: [{ role: "user", content: prompt }]
+        messages: [{ role: "user", content: content }]
       };
+      var reqOpts = opts.signal ? { signal: opts.signal } : undefined;
       var stream;
       if (FALLBACK_MODELS[model]) {
         params.betas = ["server-side-fallback-2026-07-01"];
         params.fallbacks = "default";
-        stream = client.beta.messages.stream(params);
+        stream = client.beta.messages.stream(params, reqOpts);
       } else {
-        stream = client.messages.stream(params);
+        stream = client.messages.stream(params, reqOpts);
       }
+      if (opts.onChars) stream.on("text", function (delta, snapshot) { opts.onChars(String(snapshot || "").length); });
       return stream.finalMessage().then(function (msg) {
         if (msg.stop_reason === "refusal") {
           var cat = msg.stop_details && msg.stop_details.category;
@@ -144,7 +210,10 @@
           .map(function (b) { return b.text; }).join("");
         if (!text.trim()) throw new Error("AI 응답이 비어 있습니다.");
         return text;
-      }, function (err) { throw claudeError(Anthropic, err); });
+      }, function (err) {
+        if ((opts.signal && opts.signal.aborted) || (Anthropic && err instanceof Anthropic.APIUserAbortError)) throw cancelled();
+        throw claudeError(Anthropic, err);
+      });
     });
   }
 
@@ -154,25 +223,34 @@
     return ai.route ? ai.route(role || "write") : null;
   }
 
-  function callOnce(prompt, provider, role) {
+  function callOnce(prompt, provider, role, opts) {
+    if (opts && opts.images && opts.images.length && provider !== "gemini" && provider !== "claude") {
+      return Promise.reject(new Error("이미지를 읽으려면 Google 또는 Claude API 키가 필요합니다."));
+    }
     if (provider === "edge") return callEdge(prompt);
-    if (provider === "gemini") return callGemini(prompt, role);
-    if (provider === "claude") return callClaude(prompt, role);
+    if (provider === "gemini") return callGemini(prompt, role, opts);
+    if (provider === "claude") return callClaude(prompt, role, opts);
     if (provider === "host") return window.claude.complete(prompt);
     return Promise.reject(new Error("AI 백엔드가 설정되지 않았습니다. 시작 화면에서 Google 또는 Claude API 키를 저장하면 사용할 수 있어요."));
   }
 
-  /* opts.role: plan|write|fast|qgen|review — opts.provider 로 공급자를 강제할 수 있다 */
+  /* opts.role: plan|write|fast|qgen|review — opts.provider 로 공급자를 강제할 수 있다
+     opts.images: [{mime, data(base64)}] · opts.signal: 중지용 AbortSignal · opts.onChars(n): 받은 글자 수 */
   function call(prompt, opts) {
     opts = opts || {};
     var role = opts.role || "write";
     var provider = opts.provider || providerFor(role);
     var tries = opts.tries == null ? 2 : opts.tries;
-    return callOnce(prompt, provider, role).catch(function (e) {
-      // 키·권한 오류는 재시도해도 같으므로 바로 알린다
-      if (tries > 0 && !/키가 올바르지|권한|백엔드가 설정/.test(String(e && e.message))) {
-        return new Promise(function (res) { setTimeout(res, 1200); })
-          .then(function () { return call(prompt, { role: role, provider: provider, tries: tries - 1 }); });
+    return callOnce(prompt, provider, role, opts).catch(function (e) {
+      // 키·권한 오류와 사용자 중지는 재시도하지 않는다
+      if (tries > 0 && !(e && e.code === "cancelled") && !(opts.signal && opts.signal.aborted) &&
+          !/키가 올바르지|권한|백엔드가 설정|키가 필요/.test(String(e && e.message))) {
+        return new Promise(function (res) { setTimeout(res, 1200); }).then(function () {
+          var next = {};
+          for (var k in opts) next[k] = opts[k];
+          next.provider = provider; next.tries = tries - 1;
+          return call(prompt, next);
+        });
       }
       throw e;
     });
@@ -241,6 +319,7 @@
 
   K.ai = {
     call: call,
+    blobToImage: blobToImage,
     genImage: genImage,
     providerFor: providerFor,
     parseJson: parseJson,

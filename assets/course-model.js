@@ -119,9 +119,112 @@
     var mins = allocate(n, total, null, 30);
     return mins.map(function (m, i) {
       var t = n === 1 ? unitTitle : unitTitle + " — " + (MODULE_SUFFIX[i] || ("블록 " + (i + 1)));
-      return { id: uid("m"), title: t, minutes: m, objectives: [], flow: defaultFlow(m, n === 1 ? unitTitle : MODULE_SUFFIX[i]), content: null, questions: [] };
+      return newModule({ title: t, minutes: m, flow: defaultFlow(m, n === 1 ? unitTitle : MODULE_SUFFIX[i]) });
     });
   }
+
+  /* ---------- 학습모듈(블록) — LMS 메타데이터 포함 ----------
+   * status: 작성중·검수중·완료·개선필요 (지침: 유지보수 대상은 '개선필요'로 바꾸고 주기적으로 몰아서 처리)
+   * tools: 사용 툴과 버전 / prereqs: 선행 학습모듈 / changelog: 변경 이력 / review: 수동 검수 확인 시각
+   * ncs: 능력단위요소 대응 {recs, chosen, note} / ills: SVG 삽화 / ideas: 삽화 후보 / gen: 초안 생성 옵션 */
+  var STATUSES = ["작성중", "검수중", "완료", "개선필요"];
+  function newModule(fields) {
+    var m = {
+      id: uid("m"), title: "새 블록", minutes: 60, objectives: [], flow: null, content: null, questions: [],
+      status: "작성중", category: "", tools: [], prereqs: [], changelog: [{ at: Date.now(), t: "학습모듈 생성" }],
+      review: {}, ncs: { recs: [], chosen: [], note: "" }, ills: [], ideas: [], gen: {}
+    };
+    for (var k in fields) if (Object.prototype.hasOwnProperty.call(fields, k)) m[k] = fields[k];
+    if (!m.flow) m.flow = defaultFlow(m.minutes, m.title);
+    return m;
+  }
+  /* 예전에 저장된 모듈에 빠진 필드를 채운다 (체크리스트 다시 볼 곳 포함) */
+  function ensureModule(m) {
+    var d = newModule({});
+    ["status", "category", "tools", "prereqs", "changelog", "review", "ncs", "ills", "ideas", "gen", "questions", "objectives"].forEach(function (k) {
+      if (m[k] == null) m[k] = d[k];
+    });
+    if (!m.ncs.recs) m.ncs.recs = [];
+    if (!m.ncs.chosen) m.ncs.chosen = [];
+    if (m.content && m.content.checklist) {
+      m.content.checklist = m.content.checklist.map(function (c, i) {
+        var o = typeof c === "string" ? { text: c } : c;
+        if (!o.ref) o.ref = "학습내용 " + (i + 1);
+        return o;
+      });
+    }
+    (m.questions || []).forEach(function (q) { if (!q.rubric) q.rubric = []; });
+    return m;
+  }
+  function ensureCourse(c) {
+    if (!c) return c;
+    if (!c.trash) c.trash = [];
+    (c.units || []).forEach(function (u) { (u.modules || []).forEach(ensureModule); });
+    return c;
+  }
+  function logChange(m, text) {
+    m.changelog = (m.changelog || []).concat([{ at: Date.now(), t: text }]);
+  }
+  function allModules(course) {
+    var out = [];
+    ((course && course.units) || []).forEach(function (u, ui) { (u.modules || []).forEach(function (m, mi) { out.push({ unit: u, ui: ui, module: m, mi: mi }); }); });
+    return out;
+  }
+  /* 선행 학습모듈: 이름이 같은 등록 모듈과 연결 (이름이 바뀌어도 id 로 유지) */
+  function findPrereq(course, p, selfId) {
+    var list = allModules(course);
+    var hit = p.id ? list.filter(function (x) { return x.module.id === p.id; })[0] : null;
+    if (!hit && p.name) hit = list.filter(function (x) { return x.module.title === String(p.name).trim(); })[0];
+    if (!hit) return { state: "none" };
+    if (hit.module.id === selfId) return { state: "self", module: hit.module };
+    return { state: "ok", module: hit.module };
+  }
+
+  /* 학습목표 하나를 지우면 학습내용·체크리스트도 함께 지우고, 문항·삽화 번호를 맞춘다
+     qMode: "keep"(문항은 남기고 목표 연결 해제) | "delete"(문항도 삭제) */
+  function deleteObjective(m, i, qMode) {
+    var label = String(m.objectives[i] || "").trim();
+    m.objectives.splice(i, 1);
+    if (m.content) {
+      if (m.content.sections) m.content.sections.splice(i, 1);
+      if (m.content.checklist) {
+        m.content.checklist.splice(i, 1);
+        m.content.checklist.forEach(function (c, j) { if (/^학습내용\s*\d+/.test(c.ref || "")) c.ref = c.ref.replace(/^학습내용\s*\d+/, "학습내용 " + (j + 1)); });
+      }
+    }
+    var no = i + 1;
+    var affected = (m.questions || []).filter(function (q) { return q.objective === no; }).length;
+    m.questions = (m.questions || []).filter(function (q) { return !(q.objective === no && qMode === "delete"); }).map(function (q) {
+      if (q.objective === no) q.objective = null;
+      else if (q.objective > no) q.objective -= 1;
+      return q;
+    });
+    (m.ills || []).forEach(function (x) {
+      if (x.placement == null) return;
+      if (x.placement === i) x.placement = null;
+      else if (x.placement > i) x.placement -= 1;
+    });
+    (m.ncs.recs || []).forEach(function (r) { r.covers = (r.covers || []).filter(function (c) { return c !== i; }).map(function (c) { return c > i ? c - 1 : c; }); });
+    m.ideas = (m.ideas || []).filter(function (x) { return x.section !== i; }).map(function (x) { return x.section > i ? Object.assign({}, x, { section: x.section - 1 }) : x; });
+    logChange(m, "학습목표 " + no + " 삭제" + (label ? ": " + label.slice(0, 40).trim() : "") +
+      (affected ? (qMode === "delete" ? ", 문항 " + affected + "개 삭제" : ", 문항 " + affected + "개 연결 해제") : ""));
+    return m;
+  }
+
+  /* 학습목표가 n개로 줄었을 때 없어진 번호를 가리키던 연결을 푼다 (문항 → 목표 없음, 삽화 배치 해제, NCS 대응·삽화 아이디어 정리) */
+  function trimObjectiveRefs(m, n) {
+    (m.questions || []).forEach(function (q) { if (q.objective > n) q.objective = null; });
+    (m.ills || []).forEach(function (x) { if (x.placement != null && x.placement >= n) x.placement = null; });
+    ((m.ncs && m.ncs.recs) || []).forEach(function (r) { r.covers = (r.covers || []).filter(function (c) { return c < n; }); });
+    m.ideas = (m.ideas || []).filter(function (x) { return x.section < n; });
+    return m;
+  }
+
+  /* 마크다운 이미지 문법이 깨지지 않게: 괄호 등은 퍼센트 인코딩, 대체 글자의 []·줄바꿈 제거 */
+  function svgDataUri(svg) {
+    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg).replace(/[()'!*]/g, function (ch) { return "%" + ch.charCodeAt(0).toString(16).toUpperCase(); });
+  }
+  function mdAlt(s) { return String(s || "").replace(/[[\]]+/g, " ").replace(/\s+/g, " ").trim(); }
 
   function newUnit(title, hours) {
     return { id: uid("u"), title: title, hours: hours, ncs: [], ncsDraft: [], modules: defaultModules(title, hours), outputs: null };
@@ -140,6 +243,7 @@
       target: opts.target || "직업훈련 수강생(완전 초보)",
       tool: opts.tool || "",
       createdAt: todayStr(),
+      trash: [],
       units: titles.map(function (t, i) { return newUnit(t, hours[i]); })
     };
   }
@@ -172,27 +276,20 @@
     if (!t) return ["학습목표가 비어 있습니다."];
     if (BANNED_VERBS.test(t)) issues.push("'이해한다·안다·익힌다'는 관찰할 수 없는 목표입니다. 관찰 가능한 행동(설명·비교·작성·구현 등)으로 바꿔야 합니다.");
     else if (!/할\s*수\s*있다\.?$/.test(t)) issues.push("'~할 수 있다'로 끝나야 합니다.");
-    if (t.length < 15) issues.push("수행의 조건과 제약(무엇을 가지고, 어떤 기준으로)을 함께 적는 것이 좋습니다.");
+    if (t.length < 18) issues.push("수행의 조건과 제약(무엇을 가지고, 어떤 기준으로)을 함께 적는 것이 좋습니다.");
     return issues;
   }
 
-  var TEXT_RULES = [
-    { re: /여러분|당신|우리(는|가|의|도)?\s/g, msg: "학습자를 호칭하지 않습니다('여러분·당신·우리' 대신 주어 없이 동작만 서술)." },
-    { re: /경우에 따라 다릅니다|상황에 맞게/g, msg: "모호한 표현입니다. 판단 기준을 명시하거나 문장을 삭제합니다." },
-    { re: /매우|아주|굉장히/g, msg: "정도 표현('매우·아주·굉장히')은 수치로 씁니다." },
-    { re: /당연히|물론|쉽게/g, msg: "'당연히·물론·쉽게'는 학습자를 자책하게 만듭니다." },
-    { re: /앞에서 배운|앞서 배운|지난 시간|이전 시간|다음 시간|이전 모듈|다음 모듈|앞 단원/g, msg: "다른 학습모듈·과정을 본문에서 지칭하지 않습니다(도메인 상황으로 서술)." }
-  ];
-  /* 교재(학습자용) 본문 어투 검사 → [{msg, hits}] */
+  /* 교재(학습자용) 본문 어투 검사 → [{sev, msg, sample}] — 규칙은 course-rules.js 와 같다 */
   function lintText(text) {
-    var s = String(text || "");
+    var R = K.courseRules;
+    if (!R) return [];
     var out = [];
-    TEXT_RULES.forEach(function (r) {
-      var m = s.match(r.re);
-      if (m && m.length) out.push({ msg: r.msg, hits: m.length, sample: m[0].trim() });
-    });
-    return out;
+    R.scanText("본문", text, out);
+    return out.map(function (x) { return { sev: x.sev, msg: x.msg, sample: x.snip, hits: 1 }; });
   }
+  /* 모듈 교재 전체 검수 (개요·목표·내용·체크리스트·1:1 대응) */
+  function lintModule(m) { return K.courseRules ? K.courseRules.lintTextbook(m) : []; }
 
   /* ---------- 문제은행 ---------- */
   function newQuestion(fields) {
@@ -204,45 +301,9 @@
     return q;
   }
 
-  /* 규칙 검수 — 지침 '채점 기준'·'작성 규칙' 기반. 반환: 문제 목록(빈 배열이면 통과) */
-  function validateQuestion(q, module) {
-    var issues = [];
-    var nObj = module && module.objectives ? module.objectives.length : 0;
-    if (!q.stem || !String(q.stem).trim()) issues.push("문항 본문이 비어 있습니다.");
-    if (!q.objective || (nObj && (q.objective < 1 || q.objective > nObj))) issues.push("학습목표 태그가 없습니다.");
-    if (!BANDS[q.band] || q.band === "L4") issues.push("밴드 태그(L1~L3)가 없습니다.");
-    else if (BANDS[q.band].types.indexOf(q.type) === -1) issues.push(q.band + " 밴드에는 " + BANDS[q.band].types.join("·") + " 유형을 씁니다.");
-    var choices = q.choices || [];
-    if (q.type === "객관식") {
-      var correct = choices.filter(function (c) { return c.correct; }).length;
-      var wrong = choices.length - correct;
-      if (choices.length < 3) issues.push("객관식 보기는 3개 이상이어야 합니다.");
-      if (choices.some(function (c) { return !String(c.text || "").trim(); })) issues.push("빈 보기가 있습니다.");
-      if (q.multi) {
-        if (correct < 2 || wrong < 1) issues.push("복수 정답은 정답 2개 이상과 오답 1개 이상으로 구성합니다.");
-        if (!/모두\s*고르시오/.test(q.stem || "")) issues.push("복수 정답 문항은 본문에 '모두 고르시오'를 밝혀야 합니다.");
-      } else if (correct !== 1) {
-        issues.push("단일 선택 객관식은 정답이 정확히 1개여야 합니다.");
-      }
-    }
-    if (q.type === "단답식" && !String(q.answer || "").trim()) issues.push("단답식은 정답(단어·값 하나)을 적어야 합니다.");
-    if (q.type === "서술형") {
-      var rub = (q.rubric || []).filter(function (r) { return String(r.criterion || "").trim(); });
-      if (!rub.length) issues.push("서술형은 요소별 채점 기준(점수)을 함께 작성합니다.");
-      else if (rub.some(function (r) { return !(Number(r.points) > 0); })) issues.push("채점 요소마다 점수를 적어야 합니다.");
-    }
-    if (q.type === "코드제출" && !String(q.tests || "").trim()) issues.push("코드제출은 기대 출력 또는 테스트 케이스를 함께 작성합니다.");
-    if (q.type === "파일제출" && !(q.rubric || []).filter(function (r) { return String(r.criterion || "").trim(); }).length) issues.push("파일제출은 채점 루브릭을 구성합니다.");
-    if ((q.band === "L1") && !String(q.explanation || "").trim()) issues.push("해설이 없습니다.");
-    // 체크리스트 문장을 그대로 문항으로 쓰지 않는다
-    var cl = module && module.content && module.content.checklist ? module.content.checklist : [];
-    var stemN = String(q.stem || "").replace(/\s+/g, "");
-    if (stemN && cl.some(function (c) { var t = String(c.text || c).replace(/\s+/g, ""); return t.length > 8 && stemN.indexOf(t) !== -1; })) {
-      issues.push("체크리스트 문장을 그대로 문항으로 쓰지 않습니다(구체적 상황에서의 판단을 묻습니다).");
-    }
-    if (q.review && q.review.ok === false) issues.push("AI 교차 검수: " + (q.review.notes || "수정 필요"));
-    return issues;
-  }
+  /* 문항 검수 — 규칙은 course-rules.js(lintQuestion). 반환: 지적 문구 목록(빈 배열이면 통과) */
+  function lintQuestion(q, module) { return K.courseRules ? K.courseRules.lintQuestion(q, module) : []; }
+  function validateQuestion(q, module) { return lintQuestion(q, module).map(function (x) { return x.msg; }); }
 
   /* 목표 × 밴드 분포 */
   function distribution(questions, nObjectives) {
@@ -250,7 +311,7 @@
     for (var i = 0; i < nObjectives; i++) rows.push({ L1: 0, L2: 0, L3: 0 });
     var total = { L1: 0, L2: 0, L3: 0 };
     (questions || []).forEach(function (q) {
-      var r = rows[(q.objective || 1) - 1];
+      var r = q.objective ? rows[q.objective - 1] : null; // 연결이 해제된 문항(목표 없음)은 분포에 넣지 않는다
       if (r && r[q.band] != null) r[q.band]++;
       if (total[q.band] != null) total[q.band]++;
     });
@@ -264,21 +325,28 @@
   /* 문제은행 CSV — 출제 이력은 LMS가 관리하므로 여기에는 문항 자체만 담는다 */
   function questionsToCsv(questions, ctx) {
     ctx = ctx || {};
-    var head = ["번호", "단원", "학습모듈", "학습목표", "목표 내용", "밴드", "유형", "복수정답", "문항", "시작 코드", "보기", "정답", "허용 표기", "채점 기준", "기대 출력·테스트", "해설", "검수"];
+    var head = ["문항ID", "단원", "학습모듈", "목표번호", "학습목표", "밴드", "유형", "복수정답", "문항", "보기1", "보기2", "보기3", "보기4", "보기5",
+      "정답", "허용표기", "모범답안", "채점기준", "시작코드", "테스트케이스", "루브릭", "해설", "검수"];
     var objs = ctx.objectives || [];
     var rows = [head.map(csvCell).join(",")];
-    (questions || []).forEach(function (q, i) {
-      var choices = (q.choices || []).map(function (c, j) { return (j + 1) + ") " + c.text; }).join("\n");
+    (questions || []).forEach(function (q) {
+      var ch = q.choices || [];
       var answer = q.type === "객관식"
-        ? (q.choices || []).map(function (c, j) { return c.correct ? String(j + 1) : null; }).filter(Boolean).join(",")
-        : (q.answer || "");
-      var rubric = (q.rubric || []).map(function (r) { return r.criterion + " (" + (r.points || 0) + "점)"; }).join("\n");
-      var issues = validateQuestion(q, ctx.module);
-      rows.push([i + 1, ctx.unit || "", ctx.moduleTitle || "", q.objective, objs[(q.objective || 1) - 1] || "", q.band, q.type,
-        q.multi ? "Y" : "", q.stem, q.code, choices, answer, q.accepted, rubric, q.tests, q.explanation,
-        issues.length ? "검수 필요" : "검수 통과"].map(csvCell).join(","));
+        ? ch.map(function (c, j) { return c.correct ? String(j + 1) : null; }).filter(Boolean).join(", ")
+        : (q.type === "단답식" ? (q.answer || "") : "");
+      var model = q.type === "서술형" ? (q.answer || "") : "";
+      var criteria = q.type === "서술형" ? (q.rubric || []).map(function (r) { return r.criterion + " (" + (r.points || 0) + "점)"; }).join("\n") : "";
+      var rubric = q.type === "파일제출" ? (q.rubric || []).map(function (r) {
+        return r.criterion + " [충족:" + (r.full || (r.points ? r.points + "점" : "")) + " / 부분:" + (r.partial || "") + " / 미흡:" + (r.none || "") + "]";
+      }).join("\n") : "";
+      var issues = lintQuestion(q, ctx.module);
+      var status = !issues.length ? "검수 통과" : issues.some(function (x) { return x.sev === "bad"; }) ? "필수 위반" : "권장 위반";
+      rows.push([q.id, ctx.unit || "", ctx.moduleTitle || "", q.objective == null ? "" : q.objective, (q.objective ? objs[q.objective - 1] : "") || "", q.band, q.type,
+        q.multi ? "Y" : "", q.stem, (ch[0] || {}).text, (ch[1] || {}).text, (ch[2] || {}).text, (ch[3] || {}).text, (ch[4] || {}).text,
+        answer, String(q.accepted || "").split(/\n|,\s*/).filter(Boolean).join(" / "), model, criteria, q.code, q.tests, rubric, q.explanation,
+        status].map(csvCell).join(","));
     });
-    return "﻿" + rows.join("\r\n");
+    return "\uFEFF" + rows.join("\r\n");
   }
 
   /* ---------- NCS 참조 목록 검색 ---------- */
@@ -441,16 +509,22 @@
     var c = m.content || {};
     var objs = m.objectives || [];
     var L = [];
+    var tools = (m.tools || []).filter(function (t) { return t.name || t.version; }).map(function (t) { return [t.name, t.version].filter(Boolean).join(" "); });
+    var pre = (m.prereqs || []).map(function (p) { var f = findPrereq(course, p, m.id); return f.module ? f.module.title : p.name; }).filter(Boolean);
     L.push("# " + m.title, "");
     L.push("| 항목 | 내용 |", "|---|---|");
+    L.push("| 상태 | " + (m.status || "작성중") + " |");
     L.push("| 예상 소요 시간 | " + fmtMin(m.minutes) + " |");
-    L.push("| 사용 툴과 버전 | " + (course.tool || "-") + " |");
-    L.push("| 선행 학습모듈 | " + (mi > 0 ? unit.modules[mi - 1].title : "없음") + " |");
+    L.push("| 사용 툴과 버전 | " + (tools.join(", ") || course.tool || "-") + " |");
+    L.push("| 선행 학습모듈 | " + (pre.join(", ") || "없음") + " |");
     var refs = (unit.ncs || []).filter(function (n) {
       return !(n.objectives && n.objectives.length) || n.objectives.some(function (r) { return String(r).split(".")[0] === String(mi + 1); });
     });
     L.push("| NCS 능력단위(교과목 대응) | " + (refs.map(ncsLine).join("<br>") || "-") + " |");
-    L.push("| 변경 이력 | " + todayStr() + " 초안 작성" + (c.by ? "(" + c.by + ")" : "") + " |", "");
+    var els = ((m.ncs && m.ncs.chosen) || []).map(function (code) { var f = K.ncsRef ? K.ncsRef.find(code) : null; return code + (f ? " " + (f.elem ? f.elem.name : f.unit.name) : ""); });
+    L.push("| NCS 능력단위요소(학습모듈 대응) | " + (els.join("<br>") || "-") + " |");
+    var log = (m.changelog || []).slice(-5).map(function (x) { var d = new Date(x.at); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2) + " " + x.t; });
+    L.push("| 변경 이력 | " + (log.join("<br>") || todayStr() + " 초안 작성") + " |", "");
     L.push("## 개요", "", c.overview || "(이 학습모듈을 왜 배우는지 — 문제 상황 / 해결할 것 / 학습 후 가능해지는 것)", "");
     L.push("## 학습목표", "");
     objs.forEach(function (o, i) { L.push((i + 1) + ". " + o); });
@@ -460,12 +534,16 @@
       var sec = (c.sections || [])[i] || {};
       L.push("### " + (i + 1) + ". " + (sec.title || o), "");
       L.push(sec.body || "(학습목표 " + (i + 1) + "에 대응하는 내용)", "");
+      (m.ills || []).filter(function (x) { return x.placement === i && x.svg; }).forEach(function (x) {
+        L.push("![" + (mdAlt(x.caption || x.title) || "삽화") + "](" + svgDataUri(x.svg) + ")", "");
+        if (x.caption) L.push("*" + String(x.caption).replace(/\s+/g, " ").trim() + "*", "");
+      });
     });
     L.push("## 학습 후 체크리스트", "");
     objs.forEach(function (o, i) {
       var item = (c.checklist || [])[i];
       var text = item ? (item.text || item) : o.replace(/할\s*수\s*있다\.?$/, "할 수 있습니까?");
-      L.push("- [ ] " + text + " → 다시 보기: 학습내용 " + (i + 1));
+      L.push("- [ ] " + text + " → 다시 보기: " + ((item && item.ref) || "학습내용 " + (i + 1)));
     });
     L.push("");
     return L.join("\n");
@@ -591,7 +669,9 @@
     parseTopicInput: parseTopicInput, allocateHours: allocateHours, allocate: allocate,
     defaultFlow: defaultFlow, defaultModules: defaultModules, newUnit: newUnit, buildCourse: buildCourse,
     normalizeUnit: normalizeUnit, courseHours: courseHours,
-    lintObjective: lintObjective, lintText: lintText,
+    lintObjective: lintObjective, lintText: lintText, lintModule: lintModule, lintQuestion: lintQuestion,
+    STATUSES: STATUSES, newModule: newModule, ensureModule: ensureModule, ensureCourse: ensureCourse, logChange: logChange,
+    allModules: allModules, findPrereq: findPrereq, deleteObjective: deleteObjective, trimObjectiveRefs: trimObjectiveRefs, svgDataUri: svgDataUri,
     newQuestion: newQuestion, validateQuestion: validateQuestion, distribution: distribution, questionsToCsv: questionsToCsv,
     ncsUnit: ncsUnit, ncsSearch: ncsSearch, ncsSubdList: ncsSubdList, objectiveRefs: objectiveRefs,
     courseMd: courseMd, textbookMd: textbookMd, textbookModuleMd: textbookModuleMd, lessonPlanMd: lessonPlanMd, deckMd: deckMd, unitSteps: unitSteps

@@ -21,7 +21,7 @@ function eq(a, e, msg) { ok(a === e, `${msg} (기대=${JSON.stringify(e)}, 실�
 const ctx = { console, setTimeout, Promise };
 ctx.window = ctx;
 vm.createContext(ctx);
-["course-model.js", "generate.js", "source-parts.js"].forEach((f) =>
+["course-rules.js", "course-model.js", "generate.js", "source-parts.js"].forEach((f) =>
   vm.runInContext(fs.readFileSync(path.join(ASSETS, f), "utf8"), ctx, { filename: f }));
 const K = ctx.KBuilder;
 const P = K.parts;

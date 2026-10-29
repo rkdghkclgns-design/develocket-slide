@@ -13,6 +13,17 @@
   function mixed() { return !!(K.AI && K.AI.isMixed && K.AI.isMixed()); }
   function who(role) { return ai().providerLabel(ai().providerFor(role)); }
 
+  /* 화면의 '중지' 버튼·진행 글자 수를 모든 호출에 연결한다 (작업은 한 번에 하나) */
+  var CTX = {};
+  function setCallContext(o) { CTX = o || {}; }
+  function aicall(prompt, o) {
+    var x = {};
+    for (var k in (o || {})) x[k] = o[k];
+    if (CTX.signal && !x.signal) x.signal = CTX.signal;
+    if (CTX.onChars && !x.onChars) x.onChars = CTX.onChars;
+    return ai().call(prompt, x);
+  }
+
   /* 학습자용 교재 작성 규칙 (「콘텐츠 업무 설계」 5장 교재·작성 어투) */
   var STYLE_RULES = [
     "- 경어체로 쓰고 종결은 '~합니다 / ~하지 않습니다'로 통일합니다.",
@@ -42,7 +53,7 @@
       "",
       "JSON만 출력합니다: {\"goal\": \"...\", \"hours\": [정수, ...]}"
     ].join("\n");
-    return ai().call(prompt, { role: "plan" }).then(ai().parseJson);
+    return aicall(prompt, { role: "plan" }).then(ai().parseJson);
   }
 
   function planUnit(course, unit) {
@@ -60,7 +71,7 @@
       "JSON만 출력합니다:",
       "{\"modules\": [{\"title\": \"...\", \"minutes\": 120, \"objectives\": [\"...\"], \"flow\": [{\"phase\": \"도입\", \"title\": \"...\", \"minutes\": 10}]}]}"
     ].join("\n");
-    return ai().call(prompt, { role: "plan" }).then(ai().parseJson).then(function (j) {
+    return aicall(prompt, { role: "plan" }).then(ai().parseJson).then(function (j) {
       var mods = (j && j.modules) || [];
       if (!mods.length) throw new Error("'" + unit.title + "' 블록 설계 응답이 비어 있어요.");
       unit.modules = mods.map(function (m) {
@@ -68,11 +79,12 @@
           var ph = /도입/.test(f.phase) ? "도입" : /정리/.test(f.phase) ? "정리" : "전개";
           return { phase: ph, title: String(f.title).trim(), minutes: Number(f.minutes) || 10 };
         });
-        return {
-          id: C().uid("m"), title: String(m.title || unit.title).trim(), minutes: Number(m.minutes) || 60,
+        // 학습모듈 기본 필드(상태·NCS·삽화·메타데이터)를 처음부터 갖춘다 — 설계가 중간에 실패해도 화면이 깨지지 않게
+        return C().newModule({
+          title: String(m.title || unit.title).trim(), minutes: Number(m.minutes) || 60,
           objectives: (m.objectives || []).map(function (o) { return String(o).trim(); }).filter(Boolean).slice(0, C().MAX_OBJECTIVES),
-          flow: flow.length ? flow : null, content: null, questions: []
-        };
+          flow: flow.length ? flow : null
+        });
       });
       C().normalizeUnit(unit);
       unit.outputs = null;
@@ -117,7 +129,7 @@
       "[현행 세분류 목록: 코드 | 대분류 > 중분류 > 소분류 > 세분류]", list, "",
       "목록에 있는 코드만 사용합니다. JSON만 출력합니다: {\"subds\": [\"20010707\", ...]}"
     ].join("\n");
-    return ai().call(prompt, { role: "plan" }).then(ai().parseJson).then(function (j) {
+    return aicall(prompt, { role: "plan" }).then(ai().parseJson).then(function (j) {
       var valid = (K.NCS && K.NCS.subd) || {};
       return ((j && j.subds) || []).map(String).filter(function (c) { return valid[c]; }).slice(0, 6);
     }).catch(function () { return []; });
@@ -172,8 +184,8 @@
       var prompt = rankPrompt(course, unit, cands);
       prog("능력단위 적합도 판단 중… (" + (mixed() ? "Claude·Gemini 교차" : who("plan")) + ")");
       var runs = mixed()
-        ? [ai().call(prompt, { role: "plan", provider: "claude" }), ai().call(prompt, { role: "plan", provider: "gemini" }).catch(function () { return "[]"; })]
-        : [ai().call(prompt, { role: "plan" })];
+        ? [aicall(prompt, { role: "plan", provider: "claude" }), aicall(prompt, { role: "plan", provider: "gemini" }).catch(function () { return "[]"; })]
+        : [aicall(prompt, { role: "plan" })];
       return Promise.all(runs).then(function (texts) {
         var lists = texts.map(function (t) { try { return parseRank(t, candMap); } catch (e) { return []; } });
         var merged = {};
@@ -265,7 +277,7 @@
       return { title: tm ? tm[1].trim() : o, body: raw.replace(/^제목\s*[:：].*$/m, "").trim() };
     });
     var checklist = String(s["체크리스트"] || "").split("\n").map(function (l) { return l.replace(/^\s*(\d+[.)]|[-*])\s*/, "").trim(); })
-      .filter(Boolean).slice(0, objs.length).map(function (t) { return { text: t }; });
+      .filter(Boolean).slice(0, objs.length).map(function (t, i) { return { text: t, ref: "학습내용 " + (i + 1) }; });
     var guideRaw = String(s["교수안"] || "");
     var guide = (m.flow || []).map(function (f, i) {
       var mm = guideRaw.split(/^#\s*\d+\s*$/m);
@@ -285,22 +297,66 @@
     ].join("\n");
   }
 
+  /* 교재가 이미 있으면(직접 고친 교재 포함) 교재는 그대로 두고 교수안 지침·슬라이드만 만든다
+     — 지침: 콘텐츠의 원본은 학습모듈(교재)에만 있고, 교안은 그것을 바탕으로 설계한다 */
+  function hasTextbook(m) {
+    var c = m.content;
+    // 개요나 학습내용 중 하나라도 쓴 교재는 덮어쓰지 않는다
+    return !!(c && (String(c.overview || "").trim() || (c.sections || []).some(function (s) { return String(s.body || "").trim(); })));
+  }
+  function lessonPrompt(course, unit, m, withSlides) {
+    var c = m.content;
+    var steps = (m.flow || []).map(function (f, i) { return "#" + (i + 1) + " " + f.phase + " - " + f.title + " (" + f.minutes + "분)"; }).join("\n");
+    var L = [
+      "당신은 직업훈련 교수설계자입니다. 아래 학습모듈 교재를 바탕으로 (B) 강사용 교수안 단계별 지침" + (withSlides ? "과 (C) 슬라이드 편성" : "") + "을 작성하세요. 교재에 없는 사실을 새로 만들지 않습니다.",
+      unitBrief(course, unit), "[학습모듈] " + m.title + " — " + m.minutes + "분",
+      "[학습목표]", m.objectives.map(function (o, i) { return (i + 1) + ". " + o; }).join("\n"),
+      "[진행 단계]", steps, "",
+      "[교재 개요] " + c.overview,
+      c.sections.map(function (s, i) { return "[학습내용 " + (i + 1) + "] " + s.title + "\n" + String(s.body || "").slice(0, 4000); }).join("\n\n"), "",
+      "[B 교수안 규칙] 진행 단계마다 아래 네 줄을 씁니다. 멘트 예시는 강사가 실제로 말하듯 1~2문장입니다.",
+      "**강사 활동**: … / **설명 내용**: … / **멘트 예시**: \"…\" / **학생 활동**: …", ""
+    ];
+    if (withSlides) L.push("[C 슬라이드 규칙] " + slideRules() + " 학습자를 호칭하지 않습니다. 형식:", SLIDE_FORMAT, "");
+    L.push("[출력 형식 — 구분자와 순서를 그대로 지키고 다른 말은 쓰지 않습니다]", "@@교수안@@");
+    (m.flow || []).forEach(function (f, i) { L.push("#" + (i + 1), "**강사 활동**: …", "**설명 내용**: …", "**멘트 예시**: \"…\"", "**학생 활동**: …"); });
+    if (withSlides) L.push("@@슬라이드@@", "(### 슬라이드 블록들)");
+    return L.join("\n");
+  }
+
   function generateModule(course, unit, mi) {
     var m = unit.modules[mi];
     var split = mixed();
-    return ai().call(moduleWritePrompt(course, unit, mi, !split), { role: "write" }).then(function (text) {
+    if (hasTextbook(m)) {
+      return aicall(lessonPrompt(course, unit, m, !split), { role: "write" }).then(function (text) {
+        var s = splitMarkers(String(text || "").replace(/\r\n/g, "\n"));
+        var guideRaw = String(s["교수안"] || "");
+        var parts = guideRaw.split(/^#\s*\d+\s*$/m);
+        m.content.guide = (m.flow || []).map(function (f, i) { return (parts[i + 1] || "").trim(); });
+        if (!split) { m.content.slides = s["슬라이드"] || ""; return m; }
+        return aicall(slidesPrompt(course, unit, m, m.content), { role: "fast" }).then(function (slides) {
+          m.content.slides = String(slides || "").replace(/^```\w*\s*|```\s*$/g, "").trim();
+          return m;
+        }).catch(function () { return m; });
+      }).then(function () {
+        m.content.lint = C().lintModule(m);
+        K.course.logChange(m, "교수안 지침·슬라이드 생성 (교재 유지)");
+        return m;
+      });
+    }
+    return aicall(moduleWritePrompt(course, unit, mi, !split), { role: "write" }).then(function (text) {
       var content = parseModuleWrite(text, m);
       content.by = who("write");
       if (!split) return content;
-      return ai().call(slidesPrompt(course, unit, m, content), { role: "fast" }).then(function (slides) {
+      return aicall(slidesPrompt(course, unit, m, content), { role: "fast" }).then(function (slides) {
         content.slides = String(slides || "").replace(/^```\w*\s*|```\s*$/g, "").trim();
         content.by = who("write") + " 교재·교수안 + " + who("fast") + " 슬라이드";
         return content;
       }).catch(function () { return content; });
     }).then(function (content) {
-      var all = [content.overview].concat(content.sections.map(function (s) { return s.body; }), content.checklist.map(function (c) { return c.text; })).join("\n");
-      content.lint = C().lintText(all);
       m.content = content;
+      content.lint = C().lintModule(m);
+      K.course.logChange(m, "AI 교재·교수안 작성 (" + content.by + ")");
       return m;
     });
   }
@@ -332,50 +388,134 @@
   }
 
   /* ================= 4. 문제은행 ================= */
-  var TYPE_RULES = {
-    "객관식": "보기 4개. 정답이 해석에 따라 갈리지 않게 확정되도록 출제합니다. 단일 선택은 정답 1개, 복수 정답은 정답 2개 이상 + 오답 1개 이상이며 본문에 '모두 고르시오'를 밝힙니다. 오답 보기는 흔한 오개념으로 만듭니다.",
-    "단답식": "단어나 값 하나로 답합니다. answer에 정답, accepted에 허용 표기(대소문자·띄어쓰기·동의어)를 씁니다.",
-    "서술형": "줄글로 답합니다. rubric에 채점 요소별 점수(합계 10점 내외)를 씁니다. 답변이 각 요소를 충족할 때마다 점수를 더합니다.",
-    "코드제출": "code에 시작 코드(학습내용에 쓰인 언어 기준, 없으면 의사코드/프롬프트 텍스트)를 주고, tests에 기대 출력 또는 테스트 케이스를 씁니다.",
-    "파일제출": "요구사항만 제시하고 방법은 주지 않습니다. rubric에 채점자 간 편차를 줄이는 관찰 가능한 평가 기준과 점수를 씁니다."
+  /* 유형별 출력 형식 */
+  var SHAPES = {
+    "객관식": function (multi) {
+      return multi
+        ? "{\"stem\":\"문항 (끝에 「모두 고르시오」)\",\"choices\":[{\"text\":\"보기\",\"correct\":true}, … 4~5개],\"explanation\":\"각 정답의 근거와 오답 이유\"}  (정답 2개 이상, 오답 1개 이상)"
+        : "{\"stem\":\"문항\",\"choices\":[{\"text\":\"보기\",\"correct\":false}, … 4개],\"explanation\":\"정답 근거와 오답 이유\"}  (correct 는 정확히 하나)";
+    },
+    "단답식": function () { return "{\"stem\":\"단어나 값 하나로 답하는 문항\",\"answer\":\"정답 (단어·값 하나)\",\"accepted\":\"허용 표기(대소문자·띄어쓰기 변형 등)를 쉼표로, 없으면 빈 문자열\",\"explanation\":\"해설\"}"; },
+    "서술형": function () { return "{\"stem\":\"줄글로 답하는 문항\",\"answer\":\"모범 답안\",\"rubric\":[{\"criterion\":\"채점 요소\",\"points\":2}, …],\"explanation\":\"해설\"}  (요소별 점수 합계 10점 내외)"; },
+    "코드제출": function () { return "{\"stem\":\"요구사항\",\"code\":\"시작 코드(없으면 빈 문자열)\",\"tests\":\"입력/조건 → 기대 출력 형식으로 3개 이상\",\"explanation\":\"해설\"}"; },
+    "파일제출": function () { return "{\"stem\":\"요구사항과 제출물 형식\",\"rubric\":[{\"criterion\":\"관찰 가능한 평가 기준\",\"full\":\"충족 조건(점수)\",\"partial\":\"부분 충족 조건(점수)\",\"none\":\"미흡 조건(0점)\",\"points\":3}],\"explanation\":\"채점 시 유의점\"}  (rubric 3~5행)"; }
   };
+  /* 문항 자동 검수 기준을 AI 에게 그대로 알려 준다 (lintQuestion 과 같은 기준) */
+  function qChecklist(type, multi) {
+    var L = ["문항 내용(stem)이 비어 있지 않다.",
+      "교재 체크리스트 문장을 그대로 또는 거의 그대로 쓰지 않는다. 구체적인 상황에서의 판단을 묻는다.",
+      "버전 의존 정보(Ctrl·Cmd·Alt·Shift+키, '단축키', 2024.1.2 같은 버전 번호, '버전 6')를 쓰지 않는다.",
+      "학습자를 '여러분', '당신'으로 부르지 않는다."];
+    if (type === "객관식") {
+      L.push("보기는 4개 이상이고 서로 다른 문장이다.");
+      L.push(multi ? "정답 2개 이상, 오답 1개 이상이며 stem 에 「모두 고르시오」를 밝힌다." : "정답이 될 수 있는 보기는 정확히 하나다.");
+    }
+    if (type === "단답식") L.push("answer 는 단어나 값 하나다(30자 이내, 3단어 이하, 한 줄).");
+    if (type === "서술형") L.push("rubric(채점 요소별 점수)을 반드시 쓴다.");
+    if (type === "코드제출") L.push("tests(기대 출력 또는 테스트 케이스)를 반드시 쓴다.");
+    if (type === "파일제출") L.push("rubric 을 3~5행 쓰고, 각 행에 관찰 가능한 기준과 충족·부분·미흡 조건과 점수를 쓴다.");
+    return L.map(function (x) { return "- " + x; }).join("\n");
+  }
 
   function questionPrompt(course, unit, m, spec) {
+    var R = K.courseRules;
     var band = C().BANDS[spec.band];
-    var content = m.content
-      ? m.content.sections.map(function (s, i) { return "[학습내용 " + (i + 1) + "] " + s.title + "\n" + s.body.slice(0, 1400); }).join("\n\n")
-      : "(교재 미작성 — 학습목표 기준으로 출제)";
-    var checklist = m.content ? m.content.checklist.map(function (c) { return "- " + c.text; }).join("\n") : "";
+    var oi = spec.objective - 1;
+    var sec = m.content && m.content.sections && m.content.sections[oi];
+    var checklist = m.content ? (m.content.checklist || []).map(function (c) { return "- " + (c.text || c); }).join("\n") : "";
+    var existing = (m.questions || []).filter(function (q) { return q.objective === spec.objective; })
+      .map(function (q) { return "- " + String(q.stem || "").replace(/\s+/g, " ").slice(0, 120); }).join("\n");
+    var langs = R.codeLangs(m);
+    var tools = (m.tools || []).map(function (t) { return [t.name, t.version].filter(Boolean).join(" "); }).join(", ") || course.tool || "없음";
+    var bandHow = spec.band === "L1" ? "학습내용에서 다룬 것과 같은 상황을 묻는다."
+      : spec.band === "L2" ? "같은 원리·구조를 학습내용과 다른 상황(다른 대상·도메인·시스템)에 적용하게 한다."
+      : "학습내용의 지식으로 해결할 요구사항만 제시하고 풀이 방법은 주지 않는다.";
     return [
-      "당신은 직업훈련 평가 문항 출제 전문가입니다. 아래 학습모듈의 문제은행 문항 " + spec.count + "개를 만드세요.",
+      "직업훈련 문제은행 출제자로서 문항을 만듭니다.", "", R.RULES_QB, "",
       "[학습모듈] " + m.title + " (단원: " + unit.title + ")",
-      "[대상 학습목표 " + spec.objective + "] " + (m.objectives[spec.objective - 1] || m.title),
-      "[밴드 " + spec.band + " — " + band.name + "] " + band.desc,
-      "[유형] " + spec.type + (spec.multi ? " (복수 정답)" : "") + " — " + TYPE_RULES[spec.type],
-      "", "[공통 규칙]",
-      "- 문항은 학습목표 " + spec.objective + "의 도달 여부를 판정합니다. 서로 다른 상황·소재로 겹치지 않게 만듭니다.",
-      "- 체크리스트 문장을 그대로 문항으로 쓰지 않습니다. 체크리스트는 설명 가능 여부, 문항은 구체적 상황에서의 판단을 묻습니다.",
-      "- 버전·단축키·UI 위치처럼 버전에 의존하는 정보를 문항에 담지 않습니다.",
-      "- 경어체로 씁니다. explanation에는 정답 근거와 오답이 틀린 이유를 씁니다.",
-      checklist ? "[체크리스트(그대로 쓰지 말 것)]\n" + checklist : "",
-      "", content, "",
-      "JSON 배열만 출력합니다. 해당 유형에 필요 없는 필드는 빈 값으로 둡니다:",
-      "[{\"stem\": \"...\", \"code\": \"\", \"choices\": [{\"text\": \"...\", \"correct\": false}], \"answer\": \"\", \"accepted\": \"\", \"rubric\": [{\"criterion\": \"...\", \"points\": 0}], \"tests\": \"\", \"explanation\": \"...\"}]"
+      "[대상 학습목표 " + spec.objective + "] " + (m.objectives[oi] || m.title),
+      "[대응 학습내용]", sec ? (sec.title || "") + "\n" + String(sec.body || "").slice(0, 6000) : "(교재 미작성 — 학습목표 기준으로 출제)", "",
+      checklist ? "[체크리스트 문장 — 이 문장을 그대로 문항으로 쓰지 말 것]\n" + checklist : "",
+      existing ? "\n[이미 있는 문항 — 중복 금지]\n" + existing + "\n" : "",
+      "[출제 조건]",
+      "- 밴드 " + spec.band + " (" + band.name + "): " + bandHow,
+      "- 유형: " + spec.type + (spec.multi ? " (복수 정답)" : ""),
+      "- 코드: " + (langs.length ? "학습내용에 쓰인 언어(" + langs.join(", ") + ")를 그대로 사용한다."
+        : "학습내용에 코드가 없다. 사용 툴(" + tools + ")과 학습내용을 보고 코드가 꼭 필요한 경우에만 쓰고, 그렇지 않으면 코드 없이 출제한다." +
+          (spec.type === "코드제출" ? " 코드제출 유형이므로 학습내용과 사용 툴에 맞는 언어 하나를 골라 문항 첫 줄에 언어를 밝힌다." : "")),
+      "- " + spec.count + "문항, 서로 다른 상황을 쓴다.", "",
+      "[자동 검수 기준 — 출력 전에 모든 문항이 아래를 통과하는지 스스로 확인합니다]", qChecklist(spec.type, spec.multi), "",
+      "[출력] JSON 배열 하나만. 각 원소 형식:", SHAPES[spec.type](spec.multi)
     ].join("\n");
   }
 
   function toQuestion(raw, spec) {
     var Q = C().newQuestion({ objective: spec.objective, band: spec.band, type: spec.type, multi: !!spec.multi });
     Q.stem = String(raw.stem || "").trim();
-    Q.code = String(raw.code || "").trim();
-    Q.choices = spec.type === "객관식" ? (raw.choices || []).map(function (c) { return { text: String(c.text || c).trim(), correct: !!c.correct }; }) : [];
-    Q.answer = String(raw.answer || "").trim();
-    Q.accepted = String(raw.accepted || "").trim();
-    Q.rubric = (raw.rubric || []).filter(function (r) { return r && r.criterion; }).map(function (r) { return { criterion: String(r.criterion).trim(), points: Number(r.points) || 0 }; });
-    Q.tests = String(raw.tests || "").trim();
-    Q.explanation = String(raw.explanation || "").trim();
+    Q.code = String(raw.code || raw.starter || "").trim();
+    if (spec.type === "객관식") {
+      // 공백·중복 보기를 정리하고 정답 표시를 유지한다
+      var seen = {};
+      Q.choices = (raw.choices || raw.options || []).map(function (c) { return typeof c === "string" ? { text: c, correct: false } : c; })
+        .map(function (c) { return { text: String(c.text || "").trim(), correct: !!c.correct }; })
+        .filter(function (c) {
+          if (!c.text) return false;
+          if (seen[c.text] != null) { if (c.correct) Q._dupCorrect = true; return false; }
+          seen[c.text] = 1; return true;
+        });
+      if (Array.isArray(raw.answer) || typeof raw.answer === "number") { // 번호로 온 정답도 받는다
+        var nums = [].concat(raw.answer).map(Number);
+        Q.choices.forEach(function (c, i) { c.correct = c.correct || nums.indexOf(i + 1) !== -1; });
+      }
+      delete Q._dupCorrect;
+      if (spec.multi && !/모두|전부|있는 대로|복수/.test(Q.stem)) {
+        Q.stem = /고르(시오|세요|십시오)\.?$/.test(Q.stem) ? Q.stem.replace(/고르(시오|세요|십시오)(\.?)$/, "모두 고르$1$2") : Q.stem.replace(/\s*$/, "") + " (모두 고르시오)";
+      }
+    } else {
+      Q.choices = [];
+    }
+    Q.answer = typeof raw.answer === "string" ? raw.answer.trim() : "";
+    Q.accepted = Array.isArray(raw.alts) ? raw.alts.join(", ") : String(raw.accepted || "").trim();
+    Q.rubric = (raw.rubric || []).filter(function (r) { return r && r.criterion; }).map(function (r) {
+      return { criterion: String(r.criterion).trim(), points: Number(r.points) || 0, full: String(r.full || ""), partial: String(r.partial || ""), none: String(r.none || "") };
+    });
+    if (spec.type === "서술형" && !Q.rubric.length && raw.criteria) Q.rubric = [{ criterion: String(raw.criteria), points: 0 }];
+    Q.tests = String(raw.tests || raw.testcases || "").trim();
+    Q.explanation = String(raw.explanation || raw.explain || "").trim();
     Q.by = who("qgen");
     return Q;
+  }
+
+  /* 검수에 걸린 문항만 한 번 더 고쳐 받기 — 지적이 줄어든 경우에만 바꾼다 */
+  function repairQuestions(course, unit, m, qs, spec) {
+    var R = K.courseRules;
+    var flagged = qs.map(function (q, i) { return { i: i, q: q, issues: R.lintQuestion(q, m) }; }).filter(function (x) { return x.issues.length; });
+    if (!flagged.length) return Promise.resolve({ qs: qs, fixed: 0 });
+    var payload = flagged.map(function (x) {
+      return { no: x.i, question: { stem: x.q.stem, code: x.q.code, choices: x.q.choices, answer: x.q.answer, accepted: x.q.accepted, rubric: x.q.rubric, tests: x.q.tests, explanation: x.q.explanation },
+        issues: x.issues.map(function (v) { return v.msg; }) };
+    });
+    var prompt = [
+      "아래 문항들이 자동 검수에서 지적을 받았습니다. 지적을 모두 해결하도록 고쳐 같은 형식으로 다시 씁니다. 지적과 관계없는 부분은 유지합니다.", "",
+      R.RULES_QB, "", "[대상 학습목표 " + spec.objective + "] " + (m.objectives[spec.objective - 1] || ""),
+      "[체크리스트 문장 — 그대로 쓰지 말 것]", ((m.content && m.content.checklist) || []).map(function (c) { return "- " + (c.text || c); }).join("\n"), "",
+      "[자동 검수 기준]", qChecklist(spec.type, spec.multi), "",
+      "[고칠 문항과 지적]", JSON.stringify(payload, null, 1).slice(0, 30000), "",
+      "[출력] JSON 배열 하나만. 각 원소는 {\"no\": 위의 no, ...문항 필드} 형식이며 문항 필드는 다음과 같습니다.", SHAPES[spec.type](spec.multi)
+    ].join("\n");
+    return aicall(prompt, { role: "qgen" }).then(ai().parseJson).then(function (arr) {
+      var fixed = 0;
+      (Array.isArray(arr) ? arr : (arr && arr.items) || []).forEach(function (r) {
+        var k = flagged.filter(function (x) { return x.i === Number(r.no); })[0];
+        if (!k) return;
+        var nq = toQuestion(r, spec);
+        nq.id = k.q.id;
+        var ni = R.lintQuestion(nq, m);
+        var badBefore = k.issues.some(function (v) { return v.sev === "bad"; }), badAfter = ni.some(function (v) { return v.sev === "bad"; });
+        if (ni.length < k.issues.length || (badBefore && !badAfter)) { qs[k.i] = nq; fixed++; }
+      });
+      return { qs: qs, fixed: fixed };
+    }).catch(function (e) { if (e && e.code === "cancelled") throw e; return { qs: qs, fixed: 0 }; });
   }
 
   function reviewQuestions(course, unit, m, qs) {
@@ -390,30 +530,36 @@
       "", JSON.stringify(payload), "",
       "JSON 배열만 출력합니다: [{\"i\": 0, \"ok\": true, \"notes\": \"문제가 있으면 무엇을 고쳐야 하는지 1문장, 없으면 빈 문자열\"}]"
     ].join("\n");
-    return ai().call(prompt, { role: "review" }).then(ai().parseJson).then(function (arr) {
+    return aicall(prompt, { role: "review" }).then(ai().parseJson).then(function (arr) {
       (Array.isArray(arr) ? arr : []).forEach(function (r) {
         var q = qs[Number(r.i)];
         if (q) q.review = { by: who("review"), ok: r.ok !== false, notes: String(r.notes || "").trim() };
       });
       return qs;
-    }).catch(function () { return qs; });
+    }).catch(function (e) { if (e && e.code === "cancelled") throw e; return qs; });
   }
 
+  /* 결과: 문항 배열 (qs.fixed = 자동으로 고친 문항 수) */
   function generateQuestions(course, unit, mi, spec) {
     var m = unit.modules[mi];
-    return ai().call(questionPrompt(course, unit, m, spec), { role: "qgen" }).then(ai().parseJson).then(function (arr) {
+    var fixed = 0;
+    return aicall(questionPrompt(course, unit, m, spec), { role: "qgen" }).then(ai().parseJson).then(function (arr) {
       if (!Array.isArray(arr)) arr = (arr && (arr.questions || arr.items)) || [];
       var qs = arr.slice(0, spec.count).map(function (r) { return toQuestion(r, spec); }).filter(function (q) { return q.stem; });
       if (!qs.length) throw new Error("문항 생성 응답이 비어 있어요. 다시 시도해 주세요.");
+      return repairQuestions(course, unit, m, qs, spec);
+    }).then(function (r) {
+      fixed = r.fixed;
       // 혼합 모드: 생성한 모델과 다른 모델이 교차 검수한다
-      return mixed() ? reviewQuestions(course, unit, m, qs) : qs;
-    });
+      return mixed() ? reviewQuestions(course, unit, m, r.qs) : r.qs;
+    }).then(function (qs) { qs.fixed = fixed; return qs; });
   }
 
   K.courseAI = {
+    setCallContext: setCallContext, aicall: aicall,
     planCourse: planCourse, planUnit: planUnit, recommendNcs: recommendNcs,
-    generateUnit: generateUnit, generateModule: generateModule, buildOutputs: buildOutputs,
-    generateQuestions: generateQuestions, reviewQuestions: reviewQuestions,
+    generateUnit: generateUnit, generateModule: generateModule, buildOutputs: buildOutputs, hasTextbook: hasTextbook,
+    generateQuestions: generateQuestions, reviewQuestions: reviewQuestions, toQuestion: toQuestion,
     _parseModuleWrite: parseModuleWrite, _splitMarkers: splitMarkers
   };
 })();
