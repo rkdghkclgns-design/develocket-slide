@@ -787,3 +787,64 @@ body {
 .ref-pick-item { padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; cursor: pointer; background: #fff; transition: transform .1s, border-color .1s; }
 .ref-pick-item:hover { transform: translateY(-2px); border-color: var(--mushroom); box-shadow: 0 6px 16px rgba(32, 48, 74, .12); }
 .ref-pick-item img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+
+/* ---------- 마크다운 입력칸 (md-editor.js) — 서식 도구 + 렌더링 미리 보기 ---------- */
+.mdx { text-align: left; }
+.mdx-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.mdx-tools { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; }
+.mdx-tool, .mdx-view {
+  font-family: var(--font-ui); font-size: 12.5px; font-weight: 600; color: var(--ink);
+  border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 5px 9px; cursor: pointer; line-height: 1.2;
+}
+.mdx-tool:hover, .mdx-view:hover { border-color: var(--sky-deep); }
+.mdx-views { display: inline-flex; gap: 0; }
+.mdx-view { border-radius: 0; margin-left: -1px; }
+.mdx-view:first-child { border-radius: 8px 0 0 8px; margin-left: 0; }
+.mdx-view:last-child { border-radius: 0 8px 8px 0; }
+.mdx-view.on { background: var(--ink); border-color: var(--ink); color: #fff; position: relative; }
+.mdx-body { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.mdx[data-view="split"] .mdx-body { grid-template-columns: 1fr 1fr; }
+.mdx-pv { position: relative; display: none; min-height: 140px; }
+.mdx[data-view="split"] .mdx-pv, .mdx[data-view="preview"] .mdx-pv { display: block; }
+.mdx[data-view="preview"] .source-text { display: none; }
+.mdx-pv-in {
+  box-sizing: border-box; overflow: auto; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px;
+}
+/* 나란히: 미리 보기는 원고 칸 높이에 맞추고 넘치면 스크롤 */
+.mdx[data-view="split"] .mdx-pv-in { position: absolute; inset: 0; }
+.mdx[data-view="preview"] .mdx-pv-in { max-height: 70vh; }
+.mdx-pv-in.is-empty { opacity: .55; }
+@media (max-width: 760px) {
+  .mdx[data-view="split"] .mdx-body { grid-template-columns: 1fr; }
+  .mdx[data-view="split"] .mdx-pv-in { position: static; max-height: 50vh; }
+}
+
+.md-render { font-family: var(--font-ui); font-size: 14px; line-height: 1.7; color: var(--ink); word-break: keep-all; overflow-wrap: anywhere; }
+.md-render > :first-child { margin-top: 0; }
+.md-render > :last-child { margin-bottom: 0; }
+.md-render h1, .md-render h2, .md-render h3, .md-render h4, .md-render h5, .md-render h6 { margin: 1.1em 0 .45em; line-height: 1.35; font-weight: 800; }
+.md-render h1 { font-size: 1.45em; padding-bottom: .25em; border-bottom: 2px solid var(--line); }
+.md-render h2 { font-size: 1.25em; padding-bottom: .2em; border-bottom: 1px solid var(--line); }
+.md-render h3 { font-size: 1.1em; }
+.md-render h4, .md-render h5, .md-render h6 { font-size: 1em; color: var(--ink-soft); }
+.md-render p { margin: .55em 0; }
+.md-render ul, .md-render ol { margin: .45em 0; padding-left: 1.5em; }
+.md-render li { margin: .15em 0; }
+.md-render li > ul, .md-render li > ol { margin: .15em 0; }
+.md-render li.md-task { list-style: none; margin-left: -1.3em; }
+.md-render li.md-task input { margin: 0 .35em 0 0; vertical-align: -1px; }
+.md-render blockquote { margin: .6em 0; padding: .35em 1em; border-left: 4px solid var(--sky-deep); background: #f4f9fd; color: var(--ink-soft); border-radius: 0 8px 8px 0; }
+.md-render code { font-family: "SFMono-Regular", Menlo, Consolas, monospace; font-size: .88em; background: #f3f1ea; padding: .1em .35em; border-radius: 5px; }
+.md-render pre { background: #1f2a3c; color: #e9eef6; border-radius: 10px; padding: 12px 14px; overflow: auto; margin: .6em 0; }
+.md-render pre code { background: none; padding: 0; color: inherit; font-size: 12.5px; }
+.md-render hr { border: none; border-top: 1px dashed var(--line); margin: 1em 0; }
+.md-render a { color: var(--maple-deep); }
+.md-render img { max-width: 100%; border-radius: 8px; }
+.md-render .md-table { overflow-x: auto; margin: .6em 0; }
+.md-render table { border-collapse: collapse; font-size: 13px; min-width: 60%; }
+.md-render th, .md-render td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+.md-render th { background: #f6f4ee; font-weight: 800; }
+.md-render .md-front { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: .8em; }
+.md-render .md-front span { font-size: 12px; background: #f3f1ea; border-radius: 999px; padding: 3px 10px; }
+.md-render .md-front b { color: var(--ink-soft); margin-right: 3px; }
+.mdx .source-text { min-height: 220px; }

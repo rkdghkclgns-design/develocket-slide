@@ -499,6 +499,7 @@
         (m.flow || []).forEach(function (f) { L.push("| " + f.phase + " | " + f.title + " | " + fmtMin(f.minutes) + " |"); });
         L.push("");
       });
+      if (K.course.sessionTableLines) L.push.apply(L, K.course.sessionTableLines(u)); // 차시 구성 (course-sessions.js)
     });
     return L.join("\n");
   }
@@ -674,6 +675,7 @@
     allModules: allModules, findPrereq: findPrereq, deleteObjective: deleteObjective, trimObjectiveRefs: trimObjectiveRefs, svgDataUri: svgDataUri,
     newQuestion: newQuestion, validateQuestion: validateQuestion, distribution: distribution, questionsToCsv: questionsToCsv,
     ncsUnit: ncsUnit, ncsSearch: ncsSearch, ncsSubdList: ncsSubdList, objectiveRefs: objectiveRefs,
-    courseMd: courseMd, textbookMd: textbookMd, textbookModuleMd: textbookModuleMd, lessonPlanMd: lessonPlanMd, deckMd: deckMd, unitSteps: unitSteps
+    courseMd: courseMd, textbookMd: textbookMd, textbookModuleMd: textbookModuleMd, lessonPlanMd: lessonPlanMd, deckMd: deckMd, unitSteps: unitSteps,
+    MIN_PER_HOUR: MIN_PER_HOUR, ncsLine: ncsLine
   };
 })();

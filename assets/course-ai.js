@@ -361,13 +361,9 @@
     });
   }
 
+  /* 단원 산출물 — 차시(1시간)별 교수안·슬라이드 편성안 + 단원 교재 */
   function buildOutputs(course, unit) {
-    unit.outputs = {
-      docMd: C().lessonPlanMd(course, unit),
-      textMd: C().textbookMd(course, unit),
-      deckMd: C().deckMd(course, unit),
-      generatedAt: C().todayStr()
-    };
+    unit.outputs = C().assembleOutputs(course, unit);
     return unit.outputs;
   }
 
@@ -382,7 +378,7 @@
       });
     });
     return chain.then(function () {
-      prog(total, total, "교수안·교재·편성안 조립 중…");
+      prog(total, total, "차시별 교수안·편성안과 교재 조립 중…");
       return buildOutputs(course, unit);
     });
   }

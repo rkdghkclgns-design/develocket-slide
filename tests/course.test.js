@@ -39,6 +39,7 @@ const ctx = sandbox();
 load(ctx, "ncs-catalog.js");
 load(ctx, "course-rules.js");
 load(ctx, "course-model.js");
+load(ctx, "course-sessions.js");
 const C = ctx.KBuilder.course;
 const NCS = ctx.KBuilder.NCS;
 
@@ -151,6 +152,54 @@ ok(/### 슬라이드 1 - 표지/.test(deck) && /### 슬라이드 \d+ - 마무리
 const cmd = C.courseMd(course);
 ok(cmd.indexOf("| **합계** | **40시간**") === -1 || true, "과정 설계서 생성");
 ok(/합계\*\* \| \*\*\d+시간/.test(cmd), "과정 설계서 합계 시간");
+
+/* ---------- 차시(1차시 = 1시간) 분할 ---------- */
+const su = C.newUnit("생성형 AI의 종류", 5);
+su.modules = [
+  C.newModule({ title: "모듈A", minutes: 100, objectives: ["A를 사례로 설명할 수 있다"],
+    content: { overview: "a", sections: [{ title: "a", body: "a" }], checklist: [{ text: "A를 설명할 수 있습니까?" }], guide: ["g-a0", "g-a1", "g-a2"],
+      slides: "### 슬라이드 - A1\n- 슬라이드 문구:\n  - a1\n\n### 슬라이드 - A2\n- 슬라이드 문구:\n  - a2\n\n### 슬라이드 - A3\n- 슬라이드 문구:\n  - a3" },
+    flow: [{ phase: "도입", title: "A 도입", minutes: 10 }, { phase: "전개", title: "A 전개", minutes: 80 }, { phase: "정리", title: "A 정리", minutes: 10 }] }),
+  C.newModule({ title: "모듈B", minutes: 200, flow: [{ phase: "도입", title: "B 도입", minutes: 10 }, { phase: "전개", title: "B 개념", minutes: 90 }, { phase: "전개", title: "B 실습", minutes: 90 }, { phase: "정리", title: "B 정리", minutes: 10 }] })
+];
+const sess = C.unitSessions(su);
+eq(sess.length, 5, "5시간 단원 → 5차시");
+ok(sess.every((s) => s.minutes === 60), "차시마다 60분");
+sess.forEach((s, si) => {
+  const st = C.sessionSteps(su, s, si, sess.length);
+  eq(st.reduce((a, x) => a + x.minutes, 0), 60, `${si + 1}차시 단계 시간 합 = 60분`);
+  eq(st[0].kind, "도입", `${si + 1}차시는 도입으로 시작`);
+  eq(st[st.length - 1].kind, "정리", `${si + 1}차시는 정리로 끝남`);
+});
+const st2 = C.sessionSteps(su, sess[1], 1, sess.length);
+ok(st2.some((x) => x.cont && /\(이어서\)/.test(x.text)), "차시 경계에 걸친 단계는 '(이어서)'로 표시");
+ok(C.sessionSteps(su, sess[0], 0, sess.length).some((x) => x.more && /다음 차시에 계속/.test(x.text)), "앞부분은 '(다음 차시에 계속)'");
+ok(new Set(sess.map((s, si) => C.sessionTitle(su, s))).size >= 4, "차시 제목이 차시마다 구별됨");
+
+const out = C.assembleOutputs(course, su);
+eq(out.v, C.OUTPUTS_V, "산출물 버전");
+eq(out.sessions.length, 5, "차시별 산출물 5개");
+ok(out.sessions.every((s) => /^---\n교과목: 생성형 AI의 종류\n주제: .+\n차시: \d\/5/.test(s.docMd)), "차시 교수안 프론트매터(차시 표시)");
+ok(out.sessions.every((s) => /### 도입 - .*\(\d+분\)/.test(s.docMd) && /### 정리 - .*\(\d+분\)/.test(s.docMd)), "차시 교수안마다 도입·정리 + 소요 시간");
+ok(out.sessions[0].docMd.indexOf("g-a0") !== -1, "블록 교수안 지침이 해당 차시에 들어감");
+ok(out.sessions.every((s) => /### 슬라이드 1 - 표지/.test(s.deckMd) && /### 슬라이드 \d+ - 마무리/.test(s.deckMd)), "차시 편성안마다 표지·마무리");
+const allDeck = out.sessions.map((s) => s.deckMd).join("\n");
+eq(["A1", "A2", "A3"].map((t) => (allDeck.match(new RegExp("### 슬라이드 \\d+ - " + t + "\\n", "g")) || []).length).join(","), "1,1,1", "블록 슬라이드는 차시에 한 번씩만 배분");
+ok(/### 슬라이드 \d+ - 학습목표: 모듈A/.test(out.sessions[0].deckMd), "블록이 시작하는 차시에 학습목표 슬라이드");
+ok(/### 슬라이드 \d+ - 체크리스트: 모듈A/.test(out.sessions[1].deckMd), "블록이 끝나는 차시에 체크리스트 슬라이드");
+const comb = C.sessionsDeckMd(course, su, out);
+ok(/### 슬라이드 2-1 - 표지/.test(comb) && !/### 슬라이드 1 - /.test(comb), "전체 차시 편성안은 '차시-번호'로 번호 매김");
+ok(/\| 5차시 \| 1시간 \|/.test(C.sessionsDocMd(course, su, out)), "전체 차시 교수안에 차시 목차");
+const tx = C.sessionTextMd(course, su, out.sessions[0]);
+ok(tx.indexOf("# 모듈A") !== -1 && tx.indexOf("# 모듈B") === -1, "차시 교재는 그 차시에 걸친 블록만");
+// 예전에 단원 한 덩어리로 조립한 산출물 → 불러올 때 차시별로 다시 조립(조립일 유지)
+const old = { v: 1, units: [su], trash: [] };
+su.outputs = { docMd: "옛 교수안", deckMd: "옛 편성안", textMd: "옛 교재", generatedAt: "2026-10-01" };
+C.ensureCourse(old);
+eq(su.outputs.v, C.OUTPUTS_V, "옛 산출물 → 차시별로 다시 조립");
+eq(su.outputs.generatedAt, "2026-10-01", "다시 조립해도 조립일 유지");
+eq(su.outputs.sessions.length, 5, "옛 산출물도 5차시로");
+ok(C.courseMd(course).indexOf("### 차시 구성 (1차시 = 1시간)") !== -1, "과정 설계서에 차시 구성");
 
 /* ---------- AI 라우팅 ---------- */
 function routeWith(store) {

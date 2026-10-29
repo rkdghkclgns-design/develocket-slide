@@ -27,7 +27,7 @@ const ctx = {
 };
 ctx.window = ctx;
 vm.createContext(ctx);
-["ncs-catalog.js", "course-rules.js", "course-model.js", "course-ai.js", "course-ai-tb.js", "course-ncs.js"].forEach((f) =>
+["ncs-catalog.js", "course-rules.js", "course-model.js", "course-sessions.js", "course-ai.js", "course-ai-tb.js", "course-ncs.js"].forEach((f) =>
   vm.runInContext(fs.readFileSync(path.join(ASSETS, f), "utf8"), ctx, { filename: f }));
 const K = ctx.KBuilder;
 const C = K.course, R = K.courseRules, TB = K.courseTB, AI = K.courseAI;
