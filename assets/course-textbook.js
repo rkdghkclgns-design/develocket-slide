@@ -205,18 +205,19 @@
   function photoStrip(c) {
     var m = c.module, L = K.lessonImages, A = K.autoImages;
     if (!L || !A || !K.courseAI.hasTextbook(m)) return "";
-    var list = m.photos || [], miss = L.missing(m).length, on = L.enabled();
+    var list = m.photos || [], miss = L.missing(m).length, old = L.stale(m).length, on = L.enabled();
     if (!list.length && !on) {
       return '<p class="cs-muted cs-photo-note">🖼 교안 본문 이미지 — ' + (A.count() ? "Google API 키를 저장하면" : "④ 산출물에서 이미지 자동 생성을 켜면") +
         " 학습내용의 소제목 아래에 그 내용을 보여 주는 그림을 자동으로 넣습니다.</p>";
     }
     var secTitle = function (p) { var s = ((m.content && m.content.sections) || [])[p.sec]; return "학습내용 " + (p.sec + 1) + (p.sub ? " › " + p.sub : s && s.title ? " › " + s.title : ""); };
     return '<div class="cs-photos"><div class="cs-photos-h"><b>🖼 교안 본문 이미지</b><span class="cs-muted">소제목 아래에 들어갑니다 · ' + list.length + "장</span><div class=\"cs-spacer\"></div>" +
-      (on && miss ? '<button class="btn btn-ghost" data-act="tb-photos">빈 소제목에 이미지 만들기 (' + miss + "곳)</button>" : "") + "</div>" +
+      (on && (miss || old) ? '<button class="btn btn-ghost" data-act="tb-photos">' + (old ? "이전 그림 " + old + "장 새로 바꾸기" + (miss ? " · 빈 소제목 " + miss + "곳 채우기" : "") : "빈 소제목에 이미지 만들기 (" + miss + "곳)") + "</button>" : "") + "</div>" +
+      (old ? '<p class="cs-muted cs-photo-note">이전 방식으로 만든 그림은 글자가 깨지거나 검은 띠가 있을 수 있어, 글자 없는 그림으로 새로 바꿉니다.</p>' : "") +
       (list.length ? '<div class="cs-photo-row">' + list.map(function (p) {
         var src = A.url(p.id);
         return '<figure class="cs-photo">' + (src ? '<img src="' + esc(src) + '" alt="' + esc(p.title) + '" loading="lazy">' : '<div class="cs-photo-miss">이 브라우저에 그림이 없습니다</div>') +
-          '<figcaption title="' + esc(p.prompt || "") + '">' + esc(secTitle(p)) + "</figcaption>" +
+          '<figcaption title="' + esc(p.prompt || "") + '">' + esc(secTitle(p)) + ((p.v || 1) < L.PHOTO_V ? ' <span class="cs-muted">· 이전 그림</span>' : "") + "</figcaption>" +
           '<div class="cs-photo-act">' + (on ? '<button class="cs-link" data-act="tb-photo-redo" data-id="' + esc(p.id) + '">다시 만들기</button>' : "") +
           '<button class="cs-link cs-danger-t" data-act="tb-photo-del" data-id="' + esc(p.id) + '">빼기</button></div></figure>';
       }).join("") + "</div>" : '<p class="cs-muted">아직 넣은 그림이 없습니다.</p>') + "</div>";
@@ -646,8 +647,9 @@
     "tb-photos": function (el, c) {
       U().run("교안 본문 이미지 만드는 중…", function (prog) {
         return K.lessonImages.generate(c.course, c.unit, c.module, function (l) { prog(l); }).then(function (r) {
-          if (r.made && c.unit.outputs) K.courseAI.buildOutputs(c.course, c.unit);
-          U().toast(r.made ? "본문 이미지 " + r.made + "장을 소제목 아래에 넣었습니다." + (r.failed ? " (실패 " + r.failed + "장)" : "")
+          var done = (r.made || 0) + (r.replaced || 0);
+          if (done && c.unit.outputs) K.courseAI.buildOutputs(c.course, c.unit);
+          U().toast(done ? "본문 이미지 " + (r.made ? r.made + "장을 소제목 아래에 넣고" : "") + (r.replaced ? (r.made ? " " : "") + r.replaced + "장을 새로 바꾸고" : "") + " 마쳤습니다." + (r.failed ? " (실패 " + r.failed + "장)" : "")
             : "이미지를 만들지 못했습니다" + (r.failed ? " (실패 " + r.failed + "장) — Google API 키·할당량을 확인하세요." : "."));
         });
       });

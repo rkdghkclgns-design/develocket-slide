@@ -464,7 +464,7 @@
     }
     var mods = [];
     units.forEach(function (u) { u.modules.forEach(function (m) { if (L && L.needs(m)) mods.push({ unit: u, module: m }); }); });
-    var photoN = mods.reduce(function (a, x) { return a + L.missing(x.module).length; }, 0);
+    var photoN = mods.reduce(function (a, x) { return a + L.pending(x.module); }, 0);
     var slideN = A.countJobs(build());
     if (photoN + slideN > 12 && !confirm("이미지를 최대 " + (photoN + slideN) + "장(교안 본문 " + photoN + " · 슬라이드 " + slideN + ") 차례로 만듭니다(장당 10~30초). 지금 만들까요?\n[취소]를 누르면 이미지 없이 바로 검토 화면을 엽니다.")) {
       K.app.openReview({ parts: build(), index: index, note: "" });
@@ -478,7 +478,7 @@
           if (stop()) return;
           var head = "🖼 교안 본문 이미지 " + (k + 1) + "/" + mods.length + " · " + x.module.title;
           prog(k, mods.length, head);
-          return L.generate(S.course, x.unit, x.module, function (l) { prog(k, mods.length, head + " — " + l); }, stop).then(function (r) { made += r.made; if (r.made) save(); });
+          return L.generate(S.course, x.unit, x.module, function (l) { prog(k, mods.length, head + " — " + l); }, stop).then(function (r) { var n = (r.made || 0) + (r.replaced || 0); made += n; if (n) save(); });
         });
       });
       return chain.then(function () { return A.run(build(), prog, stop); }).then(function (r) {
@@ -805,7 +805,9 @@
 
   load();
   // 보관해 둔 이미지를 다 읽으면 교재 미리보기 등을 다시 그린다
-  if (K.autoImages && K.autoImages.ready) K.autoImages.ready.then(function () { if (S.course && document.getElementById("app").dataset.screen === "course") render(); });
+  var redrawImages = function () { if (S.course && !S.busy && document.getElementById("app").dataset.screen === "course") render(); };
+  if (K.autoImages && K.autoImages.ready) K.autoImages.ready.then(redrawImages);
+  document.addEventListener("kb-images-updated", redrawImages); // 예전 그림의 검은 띠를 잘라 둔 뒤
   document.addEventListener("kb-images-store-fail", function () {
     toast("이미지를 이 브라우저에 보관하지 못했습니다(저장 공간 부족·사생활 보호 창). 지금은 보이지만 다시 열면 사라질 수 있으니 교안 MD를 내려받아 두세요.");
   });

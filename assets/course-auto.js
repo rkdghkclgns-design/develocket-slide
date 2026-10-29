@@ -112,7 +112,7 @@
   /* 교안 본문 이미지 — 실패해도 교재 작성은 이어 간다 */
   function photos(course, unit, m, label) {
     if (!K.lessonImages || !K.lessonImages.enabled()) return Promise.resolve(0);
-    return K.lessonImages.generate(course, unit, m, label).then(function (r) { return r.made; }, function (e) { if (isCancel(e)) throw e; return 0; });
+    return K.lessonImages.generate(course, unit, m, label).then(function (r) { return (r.made || 0) + (r.replaced || 0); }, function (e) { if (isCancel(e)) throw e; return 0; });
   }
   function needsPhotos(m) { return !!(K.lessonImages && K.lessonImages.needs(m)); }
 

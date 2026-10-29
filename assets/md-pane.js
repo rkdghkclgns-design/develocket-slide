@@ -64,6 +64,8 @@
   }
 
   K.mdPane = { render: render };
+  // 보관한 그림을 고쳐 두면(검은 띠 자르기) 보고 있는 MD 도 다시 그린다
+  document.addEventListener("kb-images-updated", function () { if (el("md-files")) render(); });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", wire);
   else wire();
 })();

@@ -4,7 +4,8 @@
  *   그 소제목의 글머리 문장으로 프롬프트를 만든다(내용과 상관없는 그림이 나오지 않게).
  *   m.photos = [{id, sec, sub, title, points, prompt, at, auto}] — 그림은 auto-images 보관소(IndexedDB)에,
  *   교안 MD 에는 [이미지:id] 줄로 들어간다(course-model placePhotos). 이미지 자동 생성이 '끔'이거나 Google 키가 없으면 만들지 않는다.
- *   K.lessonImages = { targets, missing, needs, generate, remove, redo, forSession, gc } */
+ *   예전 판(PHOTO_V 미만) 그림은 다음 보강·빌드 때 새로 바꾼다(그림 속 한글 깨짐·검은 띠 해결).
+ *   K.lessonImages = { targets, missing, stale, pending, needs, generate, remove, redo, forSession, gc } */
 (function () {
   "use strict";
   var K = (window.KBuilder = window.KBuilder || {});
@@ -58,32 +59,52 @@
     });
     return out;
   }
+  /* 그림 방식 판 — 올리면 예전 판 그림을 자동으로 새로 만든다
+     2: 글자 없는 그림·밝은 배경이 가득 찬 16:9 (1: 그림 속 한글이 깨지거나 검은 띠가 생기던 그림) */
+  var PHOTO_V = 2;
+  function stale(m) { return (m.photos || []).filter(function (p) { return (p.v || 1) < PHOTO_V; }); }
+  /* 만들거나 새로 바꿀 그림 수 (예전 판 + 빈 자리) */
+  function pending(m) { return stale(m).length + missing(m).length; }
   function needs(m) {
-    return enabled() && !m.autoPhotoDone && !!(K.courseAI && K.courseAI.hasTextbook && K.courseAI.hasTextbook(m)) && missing(m).length > 0;
+    if (!enabled() || !(K.courseAI && K.courseAI.hasTextbook && K.courseAI.hasTextbook(m))) return false;
+    return (!m.autoPhotoDone && missing(m).length > 0) || (m.photoV !== PHOTO_V && stale(m).length > 0);
   }
   function promptFor(course, m, t) {
     return K.recommendImagePrompt({ title: t.title, subject: [course.title, m.title, t.secTitle !== t.title ? t.secTitle : ""].filter(Boolean).join(" › "), points: t.points });
   }
   function photoOf(t, id, prompt) {
-    return { id: id, sec: t.sec, sub: t.sub, title: String(t.title).slice(0, 60), points: t.points, prompt: prompt, at: Date.now(), auto: true };
+    return { id: id, sec: t.sec, sub: t.sub, title: String(t.title).slice(0, 60), points: t.points, prompt: prompt, at: Date.now(), auto: true, v: PHOTO_V };
+  }
+  /* 예전 그림 자리 — 지금 본문에서 같은 학습내용·소제목을 찾아 새 프롬프트를 만든다 */
+  function targetOf(m, p) {
+    return targets(m).filter(function (x) { return x.sec === p.sec && x.sub === p.sub; })[0] ||
+      { sec: p.sec, sub: p.sub, title: p.title, points: p.points || [], secTitle: "" };
   }
 
-  /* 빠진 자리에 그림을 만든다 — 연달아 두 번 실패하면(키·할당량) 멈춘다.
-     한 번 돌면(실패로 멈춰도) m.autoPhotoDone — 자동 보강은 블록마다 한 번만, 다시 하려면 교재 탭 「빈 소제목에 이미지 만들기」.
+  /* 예전 판 그림은 새로 바꾸고, 빠진 자리에는 그림을 만든다 — 연달아 두 번 실패하면(키·할당량) 멈춘다.
+     한 번 돌면(실패로 멈춰도) m.autoPhotoDone·m.photoV — 자동 보강은 블록마다 한 번만, 다시 하려면 교재 탭 버튼.
      사용자가 중지한 경우만 표시하지 않아 다음에 이어 간다 */
   function generate(course, unit, m, onLabel, cancelled) {
-    if (!enabled()) return Promise.resolve({ made: 0, failed: 0, stopped: false, skipped: true });
+    if (!enabled()) return Promise.resolve({ made: 0, replaced: 0, failed: 0, stopped: false, skipped: true });
     var label = typeof onLabel === "function" ? onLabel : function () {};
     var stopNow = function () { return aborted() || !!(cancelled && cancelled()); };
-    var todo = missing(m), made = 0, failed = 0, inRow = 0, stop = false, chain = Promise.resolve();
-    todo.forEach(function (t, k) {
+    var todo = stale(m).map(function (p) { return { old: p, t: targetOf(m, p) }; })
+      .concat(missing(m).map(function (t) { return { t: t }; }));
+    var made = 0, replaced = 0, failed = 0, inRow = 0, stop = false, chain = Promise.resolve();
+    todo.forEach(function (x, k) {
       chain = chain.then(function () {
         if (stop || stopNow()) return;
-        label("교안 본문 이미지 " + (k + 1) + "/" + todo.length + " · " + t.title);
-        var prompt = promptFor(course, m, t);
-        return A().genOne(prompt, t.title, true).then(function (id) {
-          m.photos = (m.photos || []).concat([photoOf(t, id, prompt)]);
-          made++; inRow = 0;
+        label("교안 본문 이미지 " + (k + 1) + "/" + todo.length + (x.old ? " (새로 바꾸기)" : "") + " · " + x.t.title);
+        var prompt = promptFor(course, m, x.t);
+        return A().genOne(prompt, x.t.title, true, !!x.old).then(function (id) {
+          if (x.old) {
+            m.photos = (m.photos || []).map(function (p) { return p.id === x.old.id ? photoOf(x.t, id, prompt) : p; });
+            replaced++;
+          } else {
+            m.photos = (m.photos || []).concat([photoOf(x.t, id, prompt)]);
+            made++;
+          }
+          inRow = 0;
         }).catch(function (e) {
           if (isCancel(e)) throw e;
           failed++; inRow++;
@@ -92,9 +113,10 @@
       });
     });
     return chain.then(function () {
-      if (!stopNow()) m.autoPhotoDone = true;
-      if (made) C().logChange(m, "교안 본문 이미지 " + made + "장 (소제목 아래)");
-      return { made: made, failed: failed, stopped: stop };
+      if (!stopNow()) { m.autoPhotoDone = true; m.photoV = PHOTO_V; }
+      if (made || replaced) C().logChange(m, "교안 본문 이미지 " + (made ? made + "장 넣기" : "") + (made && replaced ? " · " : "") + (replaced ? replaced + "장 새로 바꾸기" : "") + " (소제목 아래)");
+      if (replaced) gc(course);
+      return { made: made, replaced: replaced, failed: failed, stopped: stop };
     });
   }
 
@@ -122,8 +144,7 @@
   function redo(course, unit, m, id) {
     var old = (m.photos || []).filter(function (x) { return x.id === id; })[0];
     if (!old || !enabled()) return Promise.resolve(false);
-    var t = targets(m).filter(function (x) { return x.sec === old.sec && x.sub === old.sub; })[0] ||
-      { sec: old.sec, sub: old.sub, title: old.title, points: old.points || [], secTitle: "" };
+    var t = targetOf(m, old);
     var prompt = promptFor(course, m, t);
     return A().genOne(prompt, t.title, true, true).then(function (nid) {
       m.photos = (m.photos || []).map(function (x) { return x.id === id ? photoOf(t, nid, prompt) : x; });
@@ -145,5 +166,5 @@
   }
 
   K.lessonImages = { enabled: enabled, subtopics: subtopics, targets: targets, missing: missing, needs: needs, generate: generate, gc: gc,
-    remove: remove, redo: redo, forSession: forSession };
+    remove: remove, redo: redo, forSession: forSession, stale: stale, pending: pending, PHOTO_V: PHOTO_V };
 })();

@@ -256,13 +256,15 @@
     });
   }
 
-  /* ---------- 이미지 생성 (엣지 → 사용자 Google 키로 Gemini 이미지 모델) ---------- */
+  /* ---------- 이미지 생성 (엣지 → 사용자 Google 키로 Gemini 이미지 모델) ----------
+     화면비는 프롬프트 글이 아니라 imageConfig 로 정한다 — 글로 '16:9'를 쓰면 정사각 캔버스에 검은 띠를 두른 그림이 나온다 */
+  var IMAGE_ASPECT = "16:9";
   function genImageEdge(prompt) {
     var ai = cfg();
     return fetchWithTimeout(ai.imageEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: prompt, model: ai.imageModel })
+      body: JSON.stringify({ prompt: prompt, model: ai.imageModel, aspectRatio: IMAGE_ASPECT })
     }, 120000).then(function (res) {
       return res.text().then(function (raw) {
         var data = {};
@@ -274,15 +276,25 @@
     });
   }
 
+  var aspectUnsupported = false; // 모델이 imageConfig 를 모르면(400) 이 창에서는 빼고 보낸다
   function genImageGemini(prompt) {
+    return genImageGeminiOnce(prompt, !aspectUnsupported).catch(function (e) {
+      if (aspectUnsupported || !/imageConfig|aspect_?ratio|Unknown name|Invalid JSON payload/i.test(String(e && e.message))) throw e;
+      aspectUnsupported = true;
+      return genImageGeminiOnce(prompt, false);
+    });
+  }
+  function genImageGeminiOnce(prompt, withAspect) {
     var ai = cfg();
     var url = ai.apiBase + "/models/" + encodeURIComponent(ai.imageModel) + ":generateContent";
+    var gc = { responseModalities: ["TEXT", "IMAGE"] };
+    if (withAspect) gc.imageConfig = { aspectRatio: IMAGE_ASPECT };
     return fetchWithTimeout(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": ai.getKey() },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseModalities: ["TEXT", "IMAGE"] }
+        generationConfig: gc
       })
     }, 120000).then(function (res) {
       return res.text().then(function (raw) {

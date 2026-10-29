@@ -79,5 +79,14 @@ ok(longCover.size === "l", "긴 제목은 글자 크기 줄임");
 const shortCover = CP("짧은 제목", "부제", "1차시");
 ok(shortCover.title === "짧은 제목" && shortCover.sub === "부제" && shortCover.foot === "1차시" && !shortCover.size, "짧은 표지는 그대로");
 
+/* 목차 슬라이드 — 번호 줄 + 차시 흐름의 '도입. …'·'전개 1. …' 줄도 항목으로 (예전에 빈 화면으로 나오던 '이번 차시 흐름') */
+const TP = dctx.KBuilder.deckHeuristics.tocParts;
+const flow = TP([{ text: "이번 차시 흐름" }, { text: "도입. 문제 상황 제시와 목표 확인 (10분)" }, { text: "전개 1. 핵심 개념 — 개념과 원리 (45분)" }, { text: "정리. 목표 확인 (5분)" }]);
+ok(flow.heading === "이번 차시 흐름" && flow.items.length === 3, "차시 흐름: 제목 + 단계 3개");
+ok(flow.items[0] === "도입 · 문제 상황 제시와 목표 확인 (10분)" && flow.items[1] === "전개 1 · 핵심 개념 — 개념과 원리 (45분)", "단계 이름 뒤 마침표는 ' · ' 로");
+const numbered = TP([{ text: "오늘의 여정" }, { text: "1. 개요" }, { text: "2. 실습" }]);
+ok(numbered.heading === "오늘의 여정" && numbered.items.join("|") === "개요|실습", "번호 목차는 번호를 떼고 그대로");
+ok(TP([]).heading === "오늘의 여정" && !TP([]).items.length, "문구가 없으면 기본 제목");
+
 console.log(`md.test.js: ${passed} 통과, ${failures.length} 실패`);
 if (failures.length) { failures.forEach((f) => console.log("  ✗ " + f)); process.exit(1); }

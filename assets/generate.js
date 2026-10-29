@@ -355,9 +355,12 @@
     if (title && title !== core) parts.push("주제: " + title);
     if (subject && subject !== core && subject !== title) parts.push("강의: " + subject);
     if (points.length) parts.push("그림에 담을 핵심 내용: " + points.join(" / "));
-    parts.push("교육 자료의 설명 그림 — 위 내용을 직접 보여 주는 장면이나 도식으로, 구성 요소와 관계·순서가 한눈에 보이게. 주제와 상관없는 사람·사무실·추상 배경 그림은 피할 것");
-    // 슬라이드 톤과 어울리는 일관 아트 스타일 — 글자 없는 깔끔한 일러스트
-    parts.push("밝고 친근한 플랫 벡터 일러스트레이션, 부드러운 파스텔 색감, 단순하고 깔끔한 배경, 글자·텍스트·숫자·로고 없이, 가로 16:9, 고해상도 교육용 삽화");
+    parts.push("교육 자료의 설명 그림 — 위 내용을 아이콘·사물·도형·화살표로 직접 보여 주는 장면이나 도식으로, 구성 요소와 관계·순서가 한눈에 보이게. 주제와 상관없는 사람·사무실·추상 배경 그림은 피할 것");
+    // 슬라이드 톤과 어울리는 일관 아트 스타일 — 화면비는 API(imageConfig)로 정하고 글로 쓰지 않는다(글로 쓰면 검은 띠가 생김)
+    parts.push("밝고 친근한 플랫 벡터 일러스트레이션, 부드러운 파스텔 색감, 밝은 단색 배경이 그림 전체를 가득 채울 것(검은 배경·검은 여백·테두리·액자 없음), 고해상도 교육용 삽화");
+    // 이미지 모델은 한글을 깨뜨려 그리므로 글자를 아예 넣지 않게 한다 (영어로도 한 번 더 — 영어 지시를 더 잘 따름)
+    parts.push("그림 안에 글자·한글·영문·숫자·라벨·말풍선 속 글·간판·로고를 절대 넣지 말 것");
+    parts.push("STRICT: absolutely no text, letters, words, numbers, labels, captions or logos anywhere in the image (Korean text renders broken) — convey everything with icons, shapes and arrows only. Fill the whole canvas with a light background, no black bars or borders");
     return parts.join(". ");
   }
 

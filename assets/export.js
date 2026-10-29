@@ -229,12 +229,15 @@
   }
 
   function tocSlide(slide, s, accent) {
+    // 화면과 같은 규칙(번호 줄 · 차시 흐름의 '도입. …'·'전개 1. …' 줄)으로 항목을 읽는다
+    var H = window.KBuilder.deckHeuristics || {};
     var heading = "", items = [];
-    s.lines.forEach(function (l) {
+    if (H.tocParts) { var tp = H.tocParts(s.lines); heading = tp.heading; items = tp.items; }
+    else s.lines.forEach(function (l) {
       var t = tagOf(l.text).text;
       if (/^\s*\d+[.)]/.test(t)) items.push(t.replace(/^\s*\d+[.)]\s*/, ""));
       else if (!items.length && !heading) heading = t;
-      else if (items.length) items.push(t);
+      else items.push(t);
     });
     slide.addText(heading || "오늘의 여정", { x: X(110), y: Y(150), w: X(1400), h: Y(90), fontSize: PT(60), fontFace: "Jua", color: C.ink, bold: true });
     var cols = 2, cw = 820, ch = 120, gx = 40, gy = 26, x0 = 110, y0 = 320;

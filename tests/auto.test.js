@@ -249,6 +249,8 @@ function load(ctx, file) { vm.runInContext(fs.readFileSync(path.join(ASSETS, fil
   ok(/^머신러닝과 딥러닝/.test(prompts[0]) && /딥러닝은 신경망을 깊게 쌓은 방법입니다/.test(prompts[0]), "프롬프트를 슬라이드 제목과 핵심 내용으로");
   ok(/^말풍선을 이어 쓰는 로봇/.test(prompts[1]) && /주제: 텍스트 생성 모델/.test(prompts[1]), "구체적인 시각 제안은 그대로 앞에 + 슬라이드 주제");
   ok(prompts.every((p) => /생성형 AI 기초/.test(p) && /상관없는/.test(p)), "강의 주제 + 내용과 상관없는 그림 금지");
+  ok(prompts.every((p) => /absolutely no text/.test(p) && /한글/.test(p)), "그림 속 글자 금지 (한글이 깨지므로 — 영어로도 한 번 더)");
+  ok(prompts.every((p) => !/16\s*:\s*9/.test(p) && /검은 배경/.test(p)), "화면비는 글로 쓰지 않음(검은 띠 원인) + 밝은 배경 가득");
   const sp = sr.parts[0];
   const dl = sp.docMd.split("\n");
   const i1 = dl.findIndex((l) => /^### 전개 1 -/.test(l)), i10 = dl.findIndex((l) => /^### 전개 10/.test(l));
@@ -360,6 +362,19 @@ function load(ctx, file) { vm.runInContext(fs.readFileSync(path.join(ASSETS, fil
   CK.genImage = () => Promise.reject(new Error("429"));
   const fr = await LI.generate(course, u, fm);
   ok(fr.stopped && fr.made === 0 && fm.autoPhotoDone && !LI.needs(fm) && LI.missing(fm).length === 2, "실패로 멈추면 다시 자동 보강하지 않음(빈 자리는 남김)");
+  // 예전 판 그림(글자가 깨지거나 검은 띠)은 자동 보강 때 새로 바꾼다 — 한 번만
+  CK.genImage = (p) => { lcalls.push(p); return Promise.resolve("data:image/png;base64,V" + lcalls.length); };
+  const vm2 = C.newModule({ title: "예전 그림 블록" });
+  vm2.objectives = ["가"];
+  vm2.content = { overview: "- 개요", sections: [{ title: "가", body: "## 가1\n- 가 본문" }], checklist: [] };
+  const oldPid = CK.autoImages.put("data:image/png;base64,OLD", "가1", "옛 프롬프트", true);
+  vm2.photos = [{ id: oldPid, sec: 0, sub: "가1", title: "가1", points: ["가 본문"] }];
+  vm2.autoPhotoDone = true;
+  u.modules.push(vm2);
+  ok(LI.stale(vm2).length === 1 && LI.needs(vm2) && LI.pending(vm2) === 1, "예전 판 그림은 다 넣은 블록이어도 새로 바꿀 대상");
+  const vr = await LI.generate(course, u, vm2);
+  ok(vr.replaced === 1 && vm2.photos.length === 1 && vm2.photos[0].id !== oldPid && vm2.photos[0].v === LI.PHOTO_V && vm2.photos[0].sub === "가1", "같은 자리를 새 판 그림으로 바꿈");
+  ok(!CK.autoImages.has(oldPid) && !LI.needs(vm2) && vm2.photoV === LI.PHOTO_V, "예전 그림은 정리하고 다시 대상이 되지 않음");
   // 코드 블록 속 '## …'·'- …' 는 소제목·글머리로 보지 않음
   const cm = C.newModule({ title: "코드 블록" });
   cm.objectives = ["프롬프트를 쓸 수 있다."];
@@ -368,6 +383,31 @@ function load(ctx, file) { vm.runInContext(fs.readFileSync(path.join(ASSETS, fil
   cm.photos = [{ id: "cbx", sec: 0, sub: "역할", title: "역할" }];
   const cmd = C.textbookModuleMd(course, u, (u.modules.push(cm), u.modules.length - 1));
   ok(cmd.indexOf("[이미지:cbx]") < cmd.indexOf("```markdown"), "코드 블록 속 같은 이름 소제목 아래에는 넣지 않음");
+
+  /* ================= Gemini 이미지 호출 — 화면비는 글이 아니라 imageConfig 로 (ai-client.js) ================= */
+  const gemSandbox = (rejectAspect, bodies) => {
+    const g = sandbox();
+    g.fetch = (url, opts) => {
+      const body = JSON.parse(opts.body);
+      bodies.push(body);
+      const bad = rejectAspect && body.generationConfig.imageConfig;
+      const payload = bad ? { error: { message: "Invalid JSON payload received. Unknown name \"imageConfig\" at 'generation_config': Cannot find field." } }
+        : { candidates: [{ content: { parts: [{ inlineData: { mimeType: "image/png", data: "QQ==" } }] } }] };
+      return Promise.resolve({ ok: !bad, status: bad ? 400 : 200, text: () => Promise.resolve(JSON.stringify(payload)) });
+    };
+    g.AbortController = AbortController; g.setTimeout = setTimeout; g.clearTimeout = clearTimeout;
+    load(g, "ai-client.js");
+    g.KBuilder.AI = { apiBase: "https://x", imageModel: "gemini-2.5-flash-image", getKey: () => "k", hasKey: () => true };
+    return g.KBuilder;
+  };
+  const okBodies = [];
+  const G1 = gemSandbox(false, okBodies);
+  ok(/^data:image\/png;base64,QQ==$/.test(await G1.genImage("그림")) && okBodies.length === 1 && okBodies[0].generationConfig.imageConfig.aspectRatio === "16:9", "16:9 화면비를 imageConfig 로 요청 (검은 띠 없이)");
+  const noBodies = [];
+  const G2 = gemSandbox(true, noBodies);
+  ok(/^data:image\/png/.test(await G2.genImage("그림")) && noBodies.length === 2 && !noBodies[1].generationConfig.imageConfig, "모델이 imageConfig 를 모르면 빼고 다시 요청");
+  await G2.genImage("그림2");
+  ok(noBodies.length === 3 && !noBodies[2].generationConfig.imageConfig, "한 번 거절되면 이 창에서는 처음부터 빼고 보냄");
 
   console.log(`auto.test.js: ${passed} 통과, ${failures.length} 실패`);
   if (failures.length) { failures.forEach((f) => console.log("  ✗ " + f)); process.exit(1); }

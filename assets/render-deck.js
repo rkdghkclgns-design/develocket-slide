@@ -125,15 +125,21 @@
       brandfoot(meta);
   }
 
-  function slideToc(s, num, total) {
+  /* 목차 슬라이드 문구 → {heading, items}
+     첫 줄(번호 없음)은 제목, 나머지는 항목 — '1. …' 번호 줄뿐 아니라 차시 흐름의 '도입. …'·'전개 1. …' 줄도 항목으로 (PPTX 내보내기도 사용) */
+  function tocParts(lines) {
     var heading = "", items = [];
-    s.lines.forEach(function (l) {
-      var t = tagOf(l.text).text;
-      if (isStep(t)) items.push(t.replace(/^\s*\d+[.)]\s*/, ""));
-      else if (!items.length && !heading) heading = t;
-      else if (items.length) items.push(t);
+    (lines || []).forEach(function (l) {
+      var t = String(tagOf(l.text).text || "").trim();
+      if (!t) return;
+      if (isStep(t)) items.push(t.replace(/^\s*(?:\d+[.)]|[①②③④⑤⑥⑦⑧⑨])\s*/, ""));
+      else if (!heading && !items.length) heading = t;
+      else items.push(t.replace(/^(도입|정리|전개\s*\d+)\s*[.:：·]\s*/, "$1 · "));
     });
-    if (!heading) heading = "오늘의 여정";
+    return { heading: heading || "오늘의 여정", items: items };
+  }
+  function slideToc(s, num, total) {
+    var tp = tocParts(s.lines), heading = tp.heading, items = tp.items;
     return logo() +
       '<div class="frame">' +
         eyebrow("AGENDA") +
@@ -506,7 +512,7 @@
     tagOf: tagOf, isFlow: isFlow, isChips: isChips, isStep: isStep,
     statementInfo: statementInfo, collectCards: collectCards,
     labeledGroups: labeledGroups, stepSequence: stepSequence,
-    footOf: footOf, splitItems: splitItems, coverParts: coverParts
+    footOf: footOf, splitItems: splitItems, coverParts: coverParts, tocParts: tocParts
   };
   /* 이 슬라이드가 이미지 칸을 그리는지 — renderSlide 의 레이아웃 판별과 같은 순서 (자동 이미지 고르기에 사용) */
   window.KBuilder.slideShowsImage = function (s) {

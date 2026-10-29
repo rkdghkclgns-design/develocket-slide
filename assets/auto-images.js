@@ -68,7 +68,7 @@
   function remember(rec) {
     store[rec.id] = rec.url;
     alts[rec.id] = rec.title || "";
-    meta[rec.id] = { at: rec.at || 0, pin: !!rec.pin };
+    meta[rec.id] = { at: rec.at || 0, pin: !!rec.pin, fixed: !!rec.fixed };
     if (rec.prompt) memo[rec.prompt] = rec.id;
   }
   function forget(id) {
@@ -77,6 +77,8 @@
   }
   var ready = tx("readonly", function (os) { return os.getAll(); }).then(function (list) {
     (list || []).forEach(function (r) { if (r && r.id && r.url && !store[r.id]) remember(r); });
+    // 예전 그림의 검은 띠는 화면을 다 그린 뒤 천천히 잘라 둔다
+    setTimeout(function () { fixStored().catch(function () {}); }, 1500);
   }).catch(function () {});
   /* 보관하지 못하면(저장 공간 부족·사생활 보호 창) 한 번 알린다 — 이 창에서는 보이지만 다시 열면 사라질 수 있다 */
   var warned = false;
@@ -97,7 +99,7 @@
   }
   /* 그림 하나를 보관하고 id 를 돌려준다 (pin = 교안 본문에 넣은 그림 → 자동 정리에서 빼기) */
   function put(url, title, prompt, pin) {
-    var rec = { id: "ai" + Date.now().toString(36) + (seq++), url: url, title: String(title || "").slice(0, 80), prompt: prompt || "", at: Date.now(), pin: !!pin };
+    var rec = { id: "ai" + Date.now().toString(36) + (seq++), url: url, title: String(title || "").slice(0, 80), prompt: prompt || "", at: Date.now(), pin: !!pin, fixed: 1 };
     remember(rec);
     tx("readwrite", function (os) { return os.put(rec); }).catch(storeFailed);
     prune(rec.id);
@@ -245,23 +247,75 @@
     return lines.join("\n");
   }
 
-  /* 큰 이미지는 줄여 메모리·내보내기 용량을 아낀다 */
+  /* 가장자리의 검은(또는 투명한) 띠 — 이미지 모델이 정사각 캔버스에 넓은 그림을 넣고 남긴 레터박스.
+     줄·칸 전체(97%)가 거의 검정인 가장자리만 띠로 보고, 남는 그림이 가로·세로 절반 이상일 때만 자른다(어두운 장면은 그대로).
+     → 원본 좌표 {x, y, w, h} 또는 null */
+  function darkBorders(img) {
+    var W = img.naturalWidth, H = img.naturalHeight;
+    if (!W || !H) return null;
+    var s = Math.min(1, 240 / Math.max(W, H)), w = Math.max(1, Math.round(W * s)), h = Math.max(1, Math.round(H * s));
+    var c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    var g = c.getContext("2d");
+    g.drawImage(img, 0, 0, w, h);
+    var d = g.getImageData(0, 0, w, h).data;
+    var dark = function (x, y) { var i = (y * w + x) * 4; return d[i + 3] < 16 || Math.max(d[i], d[i + 1], d[i + 2]) < 28; };
+    var rowDark = function (y) { var n = 0; for (var x = 0; x < w; x++) if (dark(x, y)) n++; return n >= w * 0.97; };
+    var colDark = function (x, y0, y1) { var n = 0; for (var y = y0; y < y1; y++) if (dark(x, y)) n++; return n >= (y1 - y0) * 0.97; };
+    var top = 0, bot = h, left = 0, right = w;
+    while (top < h && rowDark(top)) top++;
+    while (bot > top && rowDark(bot - 1)) bot--;
+    while (left < w && colDark(left, top, bot)) left++;
+    while (right > left && colDark(right - 1, top, bot)) right--;
+    if (Math.max(top, h - bot, left, w - right) < 3) return null; // 띠 없음 (가장자리 한두 줄은 무시)
+    if (bot - top < h * 0.5 || right - left < w * 0.5) return null;
+    // 경계의 흐린 줄까지 한 칸 더 안쪽에서 자른다
+    if (top) top++; if (bot < h) bot--; if (left) left++; if (right < w) right--;
+    return { x: left / s, y: top / s, w: (right - left) / s, h: (bot - top) / s };
+  }
+  /* 큰 이미지는 줄여 메모리·내보내기 용량을 아끼고, 검은 띠는 잘라낸다 */
   function shrink(url) {
     return new Promise(function (res) {
       if (typeof Image === "undefined" || typeof document === "undefined") { res(url); return; }
       var img = new Image();
       img.onload = function () {
-        var w = img.naturalWidth, h = img.naturalHeight, r = Math.min(1, MAX_SIDE / Math.max(w, h, 1));
-        if (r >= 1 && url.length < 700000) { res(url); return; }
+        var crop = null;
+        try { crop = darkBorders(img); } catch (e) { crop = null; }
+        var sx = crop ? crop.x : 0, sy = crop ? crop.y : 0;
+        var w = crop ? crop.w : img.naturalWidth, h = crop ? crop.h : img.naturalHeight, r = Math.min(1, MAX_SIDE / Math.max(w, h, 1));
+        if (!crop && r >= 1 && url.length < 700000) { res(url); return; }
         try {
           var c = document.createElement("canvas");
-          c.width = Math.round(w * r); c.height = Math.round(h * r);
-          c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+          c.width = Math.max(1, Math.round(w * r)); c.height = Math.max(1, Math.round(h * r));
+          c.getContext("2d").drawImage(img, sx, sy, w, h, 0, 0, c.width, c.height);
           res(c.toDataURL("image/webp", 0.86));
         } catch (e) { res(url); }
       };
       img.onerror = function () { res(url); };
       img.src = url;
+    });
+  }
+  /* 예전에 보관한 그림의 검은 띠를 한 번 잘라 둔다 (fixed 표시 — 그림마다 한 번) */
+  function fixStored() {
+    if (typeof Image === "undefined" || typeof document === "undefined") return Promise.resolve(0);
+    var ids = Object.keys(meta).filter(function (id) { return !meta[id].fixed; }), n = 0, chain = Promise.resolve();
+    ids.forEach(function (id) {
+      chain = chain.then(function () {
+        var url = store[id];
+        if (!url) return;
+        return shrink(url).then(function (next) {
+          if (!store[id] || store[id] !== url) return; // 그사이 지웠거나 바뀜
+          meta[id].fixed = true;
+          if (next !== url) { store[id] = next; n++; }
+          var rec = { id: id, url: store[id], title: alts[id], prompt: "", at: meta[id].at, pin: meta[id].pin, fixed: 1 };
+          Object.keys(memo).forEach(function (p) { if (memo[p] === id) rec.prompt = p; });
+          return tx("readwrite", function (os) { return os.put(rec); }).catch(function () {});
+        });
+      });
+    });
+    return chain.then(function () {
+      if (n && typeof document !== "undefined" && document.dispatchEvent && typeof CustomEvent === "function") document.dispatchEvent(new CustomEvent("kb-images-updated"));
+      return n;
     });
   }
   /* 프롬프트 하나로 그림 하나 — 같은 프롬프트로 만든 그림이 있으면 그것을 쓴다(fresh 면 새로). → Promise<id> */
@@ -271,7 +325,7 @@
       if (meta[hit]) meta[hit].at = Date.now(); // 다시 쓴 그림은 최근 것으로 — 정리 순서에서 뒤로
       if (pin && meta[hit] && !meta[hit].pin) {
         meta[hit].pin = true;
-        tx("readwrite", function (os) { return os.put({ id: hit, url: store[hit], title: alts[hit], prompt: prompt, at: meta[hit].at, pin: true }); }).catch(function () {});
+        tx("readwrite", function (os) { return os.put({ id: hit, url: store[hit], title: alts[hit], prompt: prompt, at: meta[hit].at, pin: true, fixed: meta[hit].fixed ? 1 : 0 }); }).catch(function () {});
       }
       return Promise.resolve(hit);
     }
