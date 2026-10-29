@@ -35,17 +35,31 @@
       s.mods = [];
       s.items.forEach(function (x) { if (s.mods.indexOf(x.module) === -1) s.mods.push(x.module); });
     });
+    // 학습모듈이 여러 차시에 걸치면 차시마다 (k/K) — 짧은 차시 제목을 차시마다 구별되게
+    var span = {};
+    sessions.forEach(function (s, si) { s.mods.forEach(function (mi) { (span[mi] = span[mi] || []).push(si); }); });
+    sessions.forEach(function (s, si) {
+      s.part = {};
+      s.mods.forEach(function (mi) { if (span[mi].length > 1) s.part[mi] = (span[mi].indexOf(si) + 1) + "/" + span[mi].length; });
+    });
     return sessions;
   }
 
   /* 차시 제목 — 그 차시의 전개 활동 제목(한 블록이 여러 차시에 걸쳐도 차시마다 구별되게), 전개가 없으면 블록 제목 */
+  /* 차시 제목 — 그 차시의 학습모듈 이름(여러 차시에 걸치면 (k/K)). 블록이 둘 이상이면 가장 오래 다루는 블록 + '외 n개' */
   function sessionTitle(unit, s) {
-    var pick = function (list) {
-      list = list.filter(function (t, i, a) { return t && a.indexOf(t) === i; });
-      return list.length > 2 ? list[0] + " 외 " + (list.length - 1) + "개" : list.join(" · ");
-    };
-    return pick(s.items.filter(function (x) { return x.f.phase === "전개"; }).map(function (x) { return String(x.f.title || "").trim(); })) ||
-      pick(s.mods.map(function (mi) { return unit.modules[mi].title; })) || unit.title;
+    if (!s.mods.length) return unit.title;
+    var name = function (mi) { return String(unit.modules[mi].title || "").trim() + (s.part && s.part[mi] ? " (" + s.part[mi] + ")" : ""); };
+    if (s.mods.length === 1) return name(s.mods[0]);
+    var mins = s.mods.map(function (mi) { return s.items.filter(function (x) { return x.module === mi; }).reduce(function (a, x) { return a + x.minutes; }, 0); });
+    var main = s.mods[mins.indexOf(Math.max.apply(null, mins))];
+    return name(main) + " 외 " + (s.mods.length - 1) + "개";
+  }
+  /* 차시에서 다루는 내용 — 전개 활동 제목 (표지 부제·교수안 개요) */
+  function sessionTopics(unit, s) {
+    var list = s.items.filter(function (x) { return x.f.phase === "전개"; }).map(function (x) { return String(x.f.title || "").trim(); })
+      .filter(function (t, i, a) { return t && a.indexOf(t) === i; });
+    return list.join(" · ") || s.mods.map(function (mi) { return unit.modules[mi].title; }).join(" · ");
   }
 
   /* 차시 하나의 진행 단계 — 차시가 블록 도입으로 시작하지 않거나 블록 정리로 끝나지 않으면
@@ -137,7 +151,7 @@
     });
     L.push("", "## 개요", "", "| 항목 | 내용 |", "|---|---|");
     L.push("| 과정 | " + course.title + " |", "| 교과목 | " + unit.title + " (" + unit.hours + "시간 · " + n + "차시) |");
-    L.push("| 차시 | " + (si + 1) + " / " + n + "차시 (약 " + fmtMin(s.minutes) + ") |", "| 대상 | " + (course.target || "직업훈련 수강생") + " |");
+    L.push("| 차시 | " + (si + 1) + " / " + n + "차시 (약 " + fmtMin(s.minutes) + ") |", "| 다루는 내용 | " + sessionTopics(unit, s) + " |", "| 대상 | " + (course.target || "직업훈련 수강생") + " |");
     L.push("| 학습모듈 | " + s.mods.map(function (mi) {
       var m = unit.modules[mi];
       var here = s.items.filter(function (x) { return x.module === mi; }).reduce(function (a, x) { return a + x.minutes; }, 0);
@@ -203,7 +217,7 @@
     var head = function (t) { L.push("### 슬라이드 " + num() + " - " + t); };
     var mapOf = function (mi) { return ((steps.filter(function (st) { return st.module === mi && !st.synthetic; })[0]) || {}).label || "-"; };
     head("표지");
-    L.push("- 대응 교수안: -", "- 슬라이드 문구:", "  - (제목) " + title, "  - (부제) " + unit.title + " · " + (si + 1) + "차시 / " + n + "차시",
+    L.push("- 대응 교수안: -", "- 슬라이드 문구:", "  - (제목) " + title, "  - (부제) " + sessionTopics(unit, s), "  - (하단) " + (si + 1) + "차시 / " + n + "차시 · " + fmtMin(s.minutes),
       "- 이미지/시각: 차시 주제를 상징하는 대표 일러스트", "");
     head("목차");
     L.push("- 대응 교수안: 도입", "- 슬라이드 문구:", "  - 이번 차시 흐름");
@@ -264,7 +278,7 @@
 
   /* 단원 산출물 조립 — 차시별 교수안·슬라이드 편성안 (조립 시점의 내용을 보관)
      교재는 학습모듈이 원본이고 삽화(SVG)로 커질 수 있어 보관하지 않고 내려받을 때 만든다 */
-  var OUTPUTS_V = 2;
+  var OUTPUTS_V = 3; // 3: 짧은 차시 제목 + 표지 부제·하단, 기존 교안 양식
   function assembleOutputs(course, unit, generatedAt) {
     var date = generatedAt || todayStr();
     var sessions = unitSessions(unit);
@@ -286,9 +300,9 @@
 
   /* 차시 교재: 그 차시에 걸친 학습모듈만 (지금 내용 기준) */
   function sessionTextMd(course, unit, sess) {
-    var head = ["---", "과정: " + course.title, "교과목: " + unit.title, "차시: " + sess.no + "차시", "date: " + todayStr(), "status: 초안", "---", ""];
+    // 기존 교안처럼 프론트매터 없이, 블록 사이는 <br> 여백
     var parts = (unit.modules || []).map(function (m, mi) { return sess.mods.indexOf(m.id) !== -1 ? textbookModuleMd(course, unit, mi) : null; }).filter(Boolean);
-    return parts.length ? head.join("\n") + parts.join("\n---\n\n") : "";
+    return parts.join("\n<br><br><br><br>\n\n");
   }
 
   function stripFront(md) { return String(md || "").replace(/^﻿?---\s*\n[\s\S]*?\n---\s*\n?/, ""); }
@@ -340,7 +354,7 @@
   }
 
   Object.assign(C, {
-    OUTPUTS_V: OUTPUTS_V, unitSessions: unitSessions, sessionSteps: sessionSteps, sessionTitle: sessionTitle,
+    OUTPUTS_V: OUTPUTS_V, unitSessions: unitSessions, sessionSteps: sessionSteps, sessionTitle: sessionTitle, sessionTopics: sessionTopics,
     sessionPlanMd: sessionPlanMd, sessionDeckMd: sessionDeckMd, assembleOutputs: assembleOutputs, sessionTextMd: sessionTextMd,
     sessionsDocMd: sessionsDocMd, sessionsDeckMd: sessionsDeckMd, sessionTableLines: sessionTableLines, ensureCourse: ensureCourse
   });

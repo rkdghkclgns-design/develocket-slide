@@ -144,9 +144,22 @@ ok(/### 정리 - .*\(\d+분\)/.test(doc), "교수안 정리에 소요 시간");
 ok(doc.indexOf("## 수업 흐름 한눈에 보기") !== -1, "수업 흐름 표");
 ok(doc.indexOf("2001070705_25v1 프롬프트 구현") !== -1, "교수안에 NCS 능력단위");
 const text = C.textbookMd(course, unit);
-const order = ["## 개요", "## 학습목표", "## 학습내용", "## 학습 후 체크리스트"].map((s) => text.indexOf(s));
-ok(order.every((i) => i !== -1) && order.every((v, i) => !i || v > order[i - 1]), "교재 구성 순서 개요→목표→내용→체크리스트");
+const order = ["# " + unit.modules[0].title + " 개요", "## 학습 목표", "## 학습 개요", "## ✅ 학습 후 체크리스트"].map((s) => text.indexOf(s));
+ok(order.every((i) => i !== -1) && order.every((v, i) => !i || v > order[i - 1]), "교안 양식 순서 개요(목표·학습 개요)→학습내용→체크리스트");
 ok(/다시 보기: 학습내용 1/.test(text), "체크리스트에 다시 볼 위치");
+ok(!/^---\n/.test(text) && /^<!--\n학습모듈 정보/.test(text), "기존 교안처럼 프론트매터 없이 시작, 메타데이터는 보이지 않는 주석");
+// 기존 교안 양식: 학습내용은 # 큰 주제, 줄글은 문장마다 글머리, ### 소제목은 ## 로
+const lm = unit.modules[0];
+lm.content = { overview: "문제 상황이 있습니다. 해결 방법을 배웁니다.", sections: [{ title: "토큰 예측", body: "LLM은 다음 토큰을 고릅니다. 확률이 높은 토큰을 고릅니다.\n\n### 샘플링\n온도가 높으면 다양해집니다.\n\n- 이미 글머리인 줄\n\n```js\nconst a = 1;\n\nconst b = 2;\n```" }], checklist: [{ text: "설명할 수 있습니까?", ref: "학습내용 1" }],
+  quest: { title: "토큰 예측 실습", steps: ["문장 세 개의 다음 토큰을 예측합니다."] } };
+const lmd = C.textbookModuleMd(course, unit, 0);
+ok(/\n# 토큰 예측\n/.test(lmd), "학습내용 제목은 # 큰 주제");
+ok(/- LLM은 다음 토큰을 고릅니다\.\n- 확률이 높은 토큰을 고릅니다\./.test(lmd), "줄글은 문장마다 글머리로");
+ok(/\n## 샘플링\n/.test(lmd) && /- 온도가 높으면 다양해집니다\./.test(lmd), "### 소제목은 ## 로, 아래 줄글도 글머리로");
+ok(/- 이미 글머리인 줄/.test(lmd) && /```js\nconst a = 1;\n\nconst b = 2;\n```/.test(lmd), "글머리·코드 블록은 그대로");
+ok(/- 문제 상황이 있습니다\.\n- 해결 방법을 배웁니다\./.test(lmd), "개요도 글머리로");
+ok(/## ❗오늘의 퀘스트\(기본 실습\)\n\n⚙️토큰 예측 실습\n- 문장 세 개의 다음 토큰을 예측합니다\.\n- 제출 파일명: `\d{6}_2-1_토큰예측실습_Ver0n_조or이름`/.test(lmd), "오늘의 퀘스트 + 제출 파일명(날짜_단원-블록_제목)");
+ok(/<br><br><br><br>/.test(lmd), "큰 주제 사이 여백");
 const deck = C.deckMd(course, unit);
 ok(/### 슬라이드 1 - 표지/.test(deck) && /### 슬라이드 \d+ - 마무리/.test(deck), "편성안(기존 형식) 표지·마무리");
 const cmd = C.courseMd(course);
@@ -183,6 +196,11 @@ ok(out.sessions.every((s) => /^---\n교과목: 생성형 AI의 종류\n주제: .
 ok(out.sessions.every((s) => /### 도입 - .*\(\d+분\)/.test(s.docMd) && /### 정리 - .*\(\d+분\)/.test(s.docMd)), "차시 교수안마다 도입·정리 + 소요 시간");
 ok(out.sessions[0].docMd.indexOf("g-a0") !== -1, "블록 교수안 지침이 해당 차시에 들어감");
 ok(out.sessions.every((s) => /### 슬라이드 1 - 표지/.test(s.deckMd) && /### 슬라이드 \d+ - 마무리/.test(s.deckMd)), "차시 편성안마다 표지·마무리");
+const cover1 = out.sessions[0].deckMd;
+ok(/\(제목\) 모듈A \(1\/2\)\n/.test(cover1), "표지 제목은 짧게 — 블록 이름 + 걸친 차시(1/2)");
+ok(/\(부제\) A 전개\n/.test(cover1) && /\(하단\) 1차시 \/ 5차시 · 1시간/.test(cover1), "표지 부제는 다루는 내용, 하단은 차시");
+ok(/\| 다루는 내용 \| /.test(out.sessions[0].docMd), "차시 교수안 개요에 다루는 내용");
+eq(C.OUTPUTS_V, 3, "산출물 버전 3 — 예전 산출물은 불러올 때 다시 조립");
 const allDeck = out.sessions.map((s) => s.deckMd).join("\n");
 eq(["A1", "A2", "A3"].map((t) => (allDeck.match(new RegExp("### 슬라이드 \\d+ - " + t + "\\n", "g")) || []).length).join(","), "1,1,1", "블록 슬라이드는 차시에 한 번씩만 배분");
 ok(/### 슬라이드 \d+ - 학습목표: 모듈A/.test(out.sessions[0].deckMd), "블록이 시작하는 차시에 학습목표 슬라이드");

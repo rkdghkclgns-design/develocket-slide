@@ -206,13 +206,15 @@
   function pad2(n) { var s = String(n).replace(/[^0-9]/g, ""); return s.length < 2 ? "0" + s : s; }
 
   function coverSlide(slide, s, meta, mush, key) {
-    var titleItem = s.lines.find(function (l) { return tagOf(l.text).tag === "title"; });
-    var subItem = s.lines.find(function (l) { return tagOf(l.text).tag === "subtitle"; });
-    var title = titleItem ? tagOf(titleItem.text).text : (meta["주제"] || s.title);
-    var sub = subItem ? tagOf(subItem.text).text : (meta["부제"] || "");
+    var pick = function (tag) { var it = s.lines.find(function (l) { return tagOf(l.text).tag === tag; }); return it ? tagOf(it.text).text : ""; };
+    var H = window.KBuilder.deckHeuristics;
+    var raw = { title: pick("title") || meta["주제"] || s.title, sub: pick("subtitle") || meta["부제"] || "", foot: pick("foot") };
+    // 화면과 같은 규칙: 긴 제목은 제목·부제로 나누고 글자 크기를 줄인다
+    var cp = H && H.coverParts ? H.coverParts(raw.title, raw.sub, raw.foot) : { title: raw.title, sub: raw.sub, foot: raw.foot, size: "" };
     slide.addText("🍄 " + (meta["교과목"] || "메이플스토리 월드 코딩 교실"), { x: X(110), y: Y(300), w: X(1000), h: Y(60), fontSize: 13, color: C.mush, bold: true });
-    slide.addText(title, { x: X(110), y: Y(360), w: X(1050), h: Y(320), fontSize: PT(110), fontFace: "Jua", color: C.ink, bold: true, valign: "top" });
-    if (sub) slide.addText(sub, { x: X(110), y: Y(690), w: X(1050), h: Y(80), fontSize: PT(38), color: C.soft });
+    slide.addText(cp.title, { x: X(110), y: Y(360), w: X(1050), h: Y(320), fontSize: PT(cp.size === "xl" ? 60 : cp.size === "l" ? 80 : 110), fontFace: "Jua", color: C.ink, bold: true, valign: "top" });
+    if (cp.sub) slide.addText(cp.sub, { x: X(110), y: Y(690), w: X(1050), h: Y(110), fontSize: PT(34), color: C.soft, valign: "top" });
+    if (cp.foot) slide.addText(cp.foot, { x: X(110), y: Y(810), w: X(1050), h: Y(60), fontSize: PT(26), color: C.soft });
     var img = slotSrc(key + "-mush-cover");
     if (img) slide.addImage({ data: img.indexOf("data:") === 0 ? img : undefined, path: img.indexOf("data:") === 0 ? undefined : img, x: X(1230), y: Y(240), w: X(560), h: X(560), rounding: true });
   }

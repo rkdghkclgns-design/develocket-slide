@@ -123,9 +123,10 @@
       "- 학습내용 덩어리당 분량: " + (gen.length || (m.gen || {}).length || LENGTHS[1]),
       extra, "",
       "[출력 형식] 아래 JSON 하나만 출력합니다. 다른 설명은 쓰지 않습니다.",
-      "{\"overview\":\"개요 (2~3문단, 문단은 \\n\\n으로 구분)\",\"objectives\":[\"~할 수 있다.\"],\"sections\":[{\"title\":\"덩어리 제목\",\"body\":\"본문. 문단 구분 \\n\\n, 목록은 '- ', 코드는 ```언어 ... ``` 블록\"}],\"checklist\":[{\"text\":\"'~할 수 있습니다.'처럼 스스로 점검하는 문장\",\"ref\":\"학습내용 1\"}],\"illustrationIdeas\":[{\"section\":0,\"description\":\"교재 이해를 돕는 삽화 한 장의 구체적 장면·개념 설명\"}]}",
+      "{\"overview\":\"개요 (2~3문단, 문단은 \\n\\n으로 구분)\",\"objectives\":[\"~할 수 있다.\"],\"sections\":[{\"title\":\"덩어리 제목\",\"body\":\"본문 — 규칙 13의 교안 양식: '## 소주제' 줄과 '- ' 글머리 문장(줄바꿈은 \\n), 코드는 ```언어 ... ``` 블록\"}],\"checklist\":[{\"text\":\"'~할 수 있습니다.'처럼 스스로 점검하는 문장\",\"ref\":\"학습내용 1\"}],\"illustrationIdeas\":[{\"section\":0,\"description\":\"교재 이해를 돕는 삽화 한 장의 구체적 장면·개념 설명\"}],\"quest\":{\"title\":\"오늘의 퀘스트(기본 실습) 제목\",\"steps\":[\"수행할 일 (~합니다.)\"]}}",
       "- objectives, sections, checklist의 개수는 같아야 하고 순서도 대응해야 합니다.",
-      "- illustrationIdeas는 1~3개입니다."
+      "- illustrationIdeas는 1~3개입니다.",
+      "- quest는 이 학습모듈을 마친 뒤 수행하는 실습 과제 하나입니다. steps는 2~4개이고 결과물 형식을 포함합니다."
     ].join("\n");
   }
 
@@ -148,8 +149,16 @@
       ideas: (res.illustrationIdeas || res.ideas || []).slice(0, 3).map(function (x) {
         var s = Number(x.section != null ? x.section : x.contentIndex) || 0;
         return { section: Math.max(0, Math.min(n - 1, s)), description: String(x.description || "").trim() };
-      }).filter(function (x) { return x.description; })
+      }).filter(function (x) { return x.description; }),
+      quest: normQuest(res.quest)
     };
+  }
+  /* 오늘의 퀘스트(기본 실습) {title, steps} — 비어 있으면 null */
+  function normQuest(q) {
+    if (!q || typeof q !== "object") return null;
+    var title = String(q.title || "").trim();
+    var steps = (Array.isArray(q.steps) ? q.steps : []).map(function (x) { return String(x || "").trim(); }).filter(Boolean).slice(0, 6);
+    return title || steps.length ? { title: title, steps: steps } : null;
   }
 
   function issuesText(I) {
@@ -222,12 +231,12 @@
     var big = tooBig(prompt);
     if (big) return Promise.reject(big);
     var cap = Math.max(3, N);
-    var ideas = [];
+    var ideas = [], quest = null;
     return call(prompt, { role: "write" }).then(ai().parseJson).then(function (res) {
       var r = normTB(res, cap);
-      ideas = r.ideas;
+      ideas = r.ideas; quest = r.quest;
       return repairOnce(course, unit, m, enforceLocks(r.tb, base, locks), locks, cap, gen);
-    }).then(function (tb) { return { tb: tb, ideas: ideas, n: N, raised: raised }; });
+    }).then(function (tb) { return { tb: tb, ideas: ideas, quest: quest, n: N, raised: raised }; });
   }
 
   /* 자동 검수 지적을 고친 수정안 — 목표가 4개 이상이면 핵심 3개로 줄인다 */

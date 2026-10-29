@@ -453,6 +453,7 @@
     if (dropped > 0) C().trimObjectiveRefs(m, tb.objectives.length);
     if (f.opts.byAi) m.content.by = U().aiName("write");
     if (f.opts.ideas && f.opts.ideas.length) m.ideas = f.opts.ideas;
+    if (f.opts.quest) m.content.quest = f.opts.quest;
     C().logChange(m, (f.opts.log || "AI 변경") + " (" + (cnt == null ? "전체 교체" : cnt + "군데 적용") + ")");
     ui.fix = null;
     U().closeDialog(); U().save(); U().render();
@@ -504,6 +505,7 @@
           TB().applyTB(m, r.tb);
           m.content.by = U().aiName("write");
           if (r.ideas.length) m.ideas = r.ideas;
+          if (r.quest) m.content.quest = r.quest;
           C().logChange(m, "AI 초안 생성");
           if (!K.courseAuto) { U().toast("초안을 만들었습니다. 오른쪽 검수 결과를 확인하세요."); return; }
           // 새 초안: 학습내용마다 삽화를 그려 넣고, 능력단위요소를 자동 배정한다(NCS 탭에서 확정)
@@ -515,7 +517,7 @@
         if (editedMeanwhile) U().toast("생성하는 동안 교재가 바뀌어 미리보기에서 골라 적용합니다.");
         openReview(m, TB().tbOf(m), r.tb, {
           title: o.title || (locks.length ? "생성 결과 미리보기" : "전체 새로 쓰기 미리보기"), issues: TB().lint(base), offKeys: o.offKeys || [], skipKeys: locks,
-          log: o.log || (locks.length ? "AI 고정 외 새로 쓰기 (고정 " + locks.length + "칸)" : "AI 전체 새로 쓰기"), ideas: locks.length ? null : r.ideas, byAi: true
+          log: o.log || (locks.length ? "AI 고정 외 새로 쓰기 (고정 " + locks.length + "칸)" : "AI 전체 새로 쓰기"), ideas: locks.length ? null : r.ideas, quest: locks.length ? null : r.quest, byAi: true
         });
       });
     });

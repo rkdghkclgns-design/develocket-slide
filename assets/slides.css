@@ -395,3 +395,10 @@ image-slot { display: block; }
   --yellow: #29b6e8; --paper: #1a2336; --accent: #29b6e8;
   --font-display: "Gothic A1", sans-serif;
 }
+
+/* 표지: 긴 제목은 글자를 줄이고, 부제 아래 하단 줄(차시 등) */
+.cover-title.t-l { font-size: calc(var(--type-mega) * .7); line-height: 1.08; }
+.cover-title.t-xl { font-size: calc(var(--type-mega) * .52); line-height: 1.12; }
+.cover-sub { line-height: 1.45; }
+.cover-foot { font-size: 28px; color: var(--ink-soft); margin: 18px 0 0; font-weight: 700; opacity: .85; }
+.theme-dark .cover-foot { color: #9fb4d6; }

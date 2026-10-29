@@ -28,6 +28,7 @@
     s = s.replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, function (m, a, b) { return "<strong>" + (a || b) + "</strong>"; });
     s = s.replace(/(^|[^*])\*([^*\s][^*]*?)\*(?!\*)/g, "$1<em>$2</em>");
     s = s.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+    s = s.replace(/&lt;br\s*\/?&gt;/gi, "<br>"); // 교안에서 줄 간격으로 쓰는 <br> 만 태그로 살린다
     s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
     return s.replace(/\u0000(\d+)\u0000/g, function (m, i) { return codes[Number(i)]; });
   }
@@ -144,7 +145,8 @@
 
   function renderMarkdown(src) {
     slugSeen = Object.create(null);
-    var lines = String(src == null ? "" : src).replace(/\r\n?/g, "\n").split("\n");
+    // HTML 주석(<!-- … -->)은 보이지 않게 — 교안 맨 위 학습모듈 정보 등
+    var lines = String(src == null ? "" : src).replace(/\r\n?/g, "\n").replace(/<!--[\s\S]*?-->\n?/g, "").split("\n");
     var head = "";
     if (/^﻿?---\s*$/.test(lines[0] || "")) {
       for (var k = 1; k < lines.length; k++) {

@@ -96,17 +96,30 @@
   }
 
   /* ---------- 레이아웃 ---------- */
+  /* 표지 문구 — 제목이 길면 첫 덩어리만 제목, 나머지는 부제로(원래 부제는 하단으로). 길이에 따라 제목 글자 크기를 줄인다.
+     예전에 만든 긴 표지 제목도 제목·부제로 나뉘어 보이게 한다. PPTX 내보내기도 같은 규칙을 쓴다 */
+  function coverParts(title, sub, foot) {
+    title = String(title || "").trim(); sub = String(sub || "").trim(); foot = String(foot || "").trim();
+    if (title.length > 28) {
+      var parts = title.split(/\s+[·—–|-]\s+|\s*:\s+/).filter(Boolean);
+      if (parts.length > 1 && parts[0].length >= 4) {
+        if (sub && !foot) foot = sub;
+        sub = parts.slice(1).join(" · ") + (sub && sub !== foot ? " · " + sub : "");
+        title = parts[0];
+      }
+    }
+    return { title: title, sub: sub, foot: foot, size: title.length > 34 ? "xl" : title.length > 18 ? "l" : "" };
+  }
   function slideCover(s, meta, key) {
-    var titleItem = s.lines.find(function (l) { return tagOf(l.text).tag === "title"; });
-    var subItem = s.lines.find(function (l) { return tagOf(l.text).tag === "subtitle"; });
-    var title = titleItem ? tagOf(titleItem.text).text : (meta["주제"] || s.title);
-    var sub = subItem ? tagOf(subItem.text).text : (meta["부제"] || "");
+    var pick = function (tag) { var it = s.lines.find(function (l) { return tagOf(l.text).tag === tag; }); return it ? tagOf(it.text).text : ""; };
+    var cp = coverParts(pick("title") || meta["주제"] || s.title, pick("subtitle") || meta["부제"] || "", pick("foot"));
     return logo() +
       '<div class="frame cover solo">' +
         '<div class="cover-left">' +
           '<span class="cover-course"><span class="mush">🍄</span> ' + esc(meta["교과목"] || "메이플스토리 월드 코딩 교실") + '</span>' +
-          '<h1 class="cover-title anim">' + inlineMd(title) + '</h1>' +
-          (sub ? '<p class="cover-sub anim2">' + inlineMd(sub) + '</p>' : "") +
+          '<h1 class="cover-title anim' + (cp.size ? " t-" + cp.size : "") + '">' + inlineMd(cp.title) + '</h1>' +
+          (cp.sub ? '<p class="cover-sub anim2">' + inlineMd(cp.sub) + '</p>' : "") +
+          (cp.foot ? '<p class="cover-foot anim2">' + inlineMd(cp.foot) + '</p>' : "") +
         '</div>' +
       '</div>' +
       brandfoot(meta);
@@ -493,7 +506,7 @@
     tagOf: tagOf, isFlow: isFlow, isChips: isChips, isStep: isStep,
     statementInfo: statementInfo, collectCards: collectCards,
     labeledGroups: labeledGroups, stepSequence: stepSequence,
-    footOf: footOf, splitItems: splitItems
+    footOf: footOf, splitItems: splitItems, coverParts: coverParts
   };
   /* 이 슬라이드가 이미지 칸을 그리는지 — renderSlide 의 레이아웃 판별과 같은 순서 (자동 이미지 고르기에 사용) */
   window.KBuilder.slideShowsImage = function (s) {

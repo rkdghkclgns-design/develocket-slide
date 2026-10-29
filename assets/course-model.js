@@ -504,55 +504,93 @@
     return L.join("\n");
   }
 
-  /* 학습모듈 교재(학습자용) — 개요 → 학습목표 → 학습내용 → 학습 후 체크리스트 (구성 순서 고정) */
+  /* ---------- 학습자용 교안(교재) — 기관에서 쓰던 기존 교안 양식 ----------
+   * # {학습모듈} 개요(## 학습 목표 · ## 학습 개요) → # {학습내용 제목}(학습목표와 1:1, ## 소주제 + 글머리 문장)
+   * → ## ✅ 학습 후 체크리스트 → ## ❗오늘의 퀘스트(기본 실습). 큰 주제 사이는 <br> 여백.
+   * 예전에 줄글로 써 둔 본문은 문장마다 글머리로 바꾸고 ### 소제목은 ## 로 올린다(저장된 내용은 그대로).
+   * 상태·툴·NCS·변경 이력은 화면에 보이지 않는 주석으로 맨 위에 남긴다. */
+  var SECTION_GAP = "<br><br><br><br>";
+  function sentences(text) {
+    return String(text || "").replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s+(?=\S)/).filter(Boolean);
+  }
+  function lessonBody(body) {
+    var out = [], para = [], inCode = false;
+    var flush = function () { if (para.length) { sentences(para.join(" ")).forEach(function (s) { out.push("- " + s); }); para = []; } };
+    String(body || "").replace(/\r\n?/g, "\n").split("\n").forEach(function (line) {
+      if (/^\s*(```|~~~)/.test(line)) { flush(); inCode = !inCode; out.push(line); return; }
+      if (inCode) { out.push(line); return; }
+      if (!line.trim()) { flush(); out.push(""); return; }
+      var h = line.match(/^\s*#{1,6}\s+(.*)$/);
+      if (h) { flush(); out.push("", "## " + h[1].trim()); return; }
+      if (/^\s*([-*+]\s|\d+[.)]\s|\||>|!\[|\*\*[^*]+\*\*\s*$|<br)/.test(line)) { flush(); out.push(line); return; }
+      para.push(line.trim());
+    });
+    flush();
+    return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+  function metaComment(course, unit, m, mi) {
+    var tools = (m.tools || []).filter(function (t) { return t.name || t.version; }).map(function (t) { return [t.name, t.version].filter(Boolean).join(" "); });
+    var pre = (m.prereqs || []).map(function (p) { var f = findPrereq(course, p, m.id); return f.module ? f.module.title : p.name; }).filter(Boolean);
+    var refs = (unit.ncs || []).filter(function (n) {
+      return !(n.objectives && n.objectives.length) || n.objectives.some(function (r) { return String(r).split(".")[0] === String(mi + 1); });
+    });
+    var els = ((m.ncs && m.ncs.chosen) || []).map(function (code) { var f = K.ncsRef ? K.ncsRef.find(code) : null; return code + (f ? " " + (f.elem ? f.elem.name : f.unit.name) : ""); });
+    var log = (m.changelog || []).slice(-3).map(function (x) { var d = new Date(x.at); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2) + " " + x.t; });
+    var rows = ["학습모듈 정보", "상태: " + (m.status || "작성중"), "예상 소요 시간: " + fmtMin(m.minutes), "사용 툴과 버전: " + (tools.join(", ") || course.tool || "-"),
+      "선행 학습모듈: " + (pre.join(", ") || "없음"), "NCS 능력단위(교과목 대응): " + (refs.map(ncsLine).join(", ") || "-") + (refs.length && unit.ncsAuto ? " (자동 배정 · 확정 전)" : ""),
+      "NCS 능력단위요소(학습모듈 대응): " + (els.join(", ") || "-") + (els.length && m.ncs && m.ncs.auto ? " (자동 배정 · 확정 전)" : ""), "변경 이력: " + (log.join(" / ") || "-")];
+    return "<!--\n" + rows.join("\n").replace(/--/g, "—") + "\n-->";
+  }
+  /* 오늘의 퀘스트(기본 실습) — AI 가 쓴 퀘스트, 없으면 실습형 전개 단계로 만든다. 제출 파일명: 날짜_단원-블록_제목_Ver0n_조or이름 */
+  function questMd(course, unit, m, mi) {
+    var q = (m.content && m.content.quest) || null;
+    var title = q && q.title, steps = (q && q.steps) || [];
+    if (!title && !steps.length) {
+      var st = (m.flow || []).filter(function (f) { return f.phase === "전개" && /실습|활동|작성|만들|분석|설계|기획|발표|구현|제작|적용/.test(f.title); })[0];
+      if (!st) return "";
+      title = st.title;
+      steps = (m.objectives || []).map(function (o) { return "확인 기준: " + o; });
+    }
+    var d = new Date(), pad = function (n) { return ("0" + n).slice(-2); };
+    var file = String(d.getFullYear()).slice(2) + pad(d.getMonth() + 1) + pad(d.getDate()) + "_" + ((course.units || []).indexOf(unit) + 1) + "-" + (mi + 1) + "_" +
+      String(title || m.title).replace(/[^\p{L}\p{N}]+/gu, "").slice(0, 12) + "_Ver0n_조or이름";
+    return ["## ❗오늘의 퀘스트(기본 실습)", "", "⚙️" + (title || m.title)].concat(steps.map(function (s) { return "- " + s; }), ["- 제출 파일명: `" + file + "`"]).join("\n");
+  }
   function textbookModuleMd(course, unit, mi) {
     var m = unit.modules[mi];
     var c = m.content || {};
     var objs = m.objectives || [];
-    var L = [];
-    var tools = (m.tools || []).filter(function (t) { return t.name || t.version; }).map(function (t) { return [t.name, t.version].filter(Boolean).join(" "); });
-    var pre = (m.prereqs || []).map(function (p) { var f = findPrereq(course, p, m.id); return f.module ? f.module.title : p.name; }).filter(Boolean);
-    L.push("# " + m.title, "");
-    L.push("| 항목 | 내용 |", "|---|---|");
-    L.push("| 상태 | " + (m.status || "작성중") + " |");
-    L.push("| 예상 소요 시간 | " + fmtMin(m.minutes) + " |");
-    L.push("| 사용 툴과 버전 | " + (tools.join(", ") || course.tool || "-") + " |");
-    L.push("| 선행 학습모듈 | " + (pre.join(", ") || "없음") + " |");
-    var refs = (unit.ncs || []).filter(function (n) {
-      return !(n.objectives && n.objectives.length) || n.objectives.some(function (r) { return String(r).split(".")[0] === String(mi + 1); });
-    });
-    L.push("| NCS 능력단위(교과목 대응) | " + (refs.map(ncsLine).join("<br>") || "-") + " |");
-    var els = ((m.ncs && m.ncs.chosen) || []).map(function (code) { var f = K.ncsRef ? K.ncsRef.find(code) : null; return code + (f ? " " + (f.elem ? f.elem.name : f.unit.name) : ""); });
-    L.push("| NCS 능력단위요소(학습모듈 대응) | " + (els.join("<br>") || "-") + (els.length && m.ncs && m.ncs.auto ? "<br>(자동 배정 · 확정 전)" : "") + " |");
-    var log = (m.changelog || []).slice(-5).map(function (x) { var d = new Date(x.at); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2) + " " + x.t; });
-    L.push("| 변경 이력 | " + (log.join("<br>") || todayStr() + " 초안 작성") + " |", "");
-    L.push("## 개요", "", c.overview || "(이 학습모듈을 왜 배우는지 — 문제 상황 / 해결할 것 / 학습 후 가능해지는 것)", "");
-    L.push("## 학습목표", "");
-    objs.forEach(function (o, i) { L.push((i + 1) + ". " + o); });
-    if (!objs.length) L.push("1. (학습목표를 '~할 수 있다'로 작성)");
-    L.push("", "## 학습내용", "");
+    var L = [metaComment(course, unit, m, mi), "", "# " + m.title + " 개요", "", "## 학습 목표", ""];
+    objs.forEach(function (o) { L.push("- " + o); });
+    if (!objs.length) L.push("- (학습목표를 '~할 수 있다'로 작성)");
+    L.push("", "## 학습 개요", "");
+    var ov = sentences(c.overview);
+    if (ov.length) ov.forEach(function (s) { L.push("- " + s); });
+    else L.push("- (이 학습모듈을 왜 배우는지 — 문제 상황 / 해결할 것 / 학습 후 가능해지는 것)");
+    L.push(SECTION_GAP, "");
     objs.forEach(function (o, i) {
       var sec = (c.sections || [])[i] || {};
-      L.push("### " + (i + 1) + ". " + (sec.title || o), "");
-      L.push(sec.body || "(학습목표 " + (i + 1) + "에 대응하는 내용)", "");
+      L.push("# " + (sec.title || o), "");
       (m.ills || []).filter(function (x) { return x.placement === i && x.svg; }).forEach(function (x) {
         L.push("![" + (mdAlt(x.caption || x.title) || "삽화") + "](" + svgDataUri(x.svg) + ")", "");
-        if (x.caption) L.push("*" + String(x.caption).replace(/\s+/g, " ").trim() + "*", "");
       });
+      L.push(lessonBody(sec.body) || "- (학습목표 " + (i + 1) + "에 대응하는 내용)", "");
+      L.push(SECTION_GAP, "");
     });
-    L.push("## 학습 후 체크리스트", "");
+    L.push("## ✅ 학습 후 체크리스트", "");
     objs.forEach(function (o, i) {
       var item = (c.checklist || [])[i];
       var text = item ? (item.text || item) : o.replace(/할\s*수\s*있다\.?$/, "할 수 있습니까?");
       L.push("- [ ] " + text + " → 다시 보기: " + ((item && item.ref) || "학습내용 " + (i + 1)));
     });
+    var quest = questMd(course, unit, m, mi);
+    if (quest) L.push("", quest);
     L.push("");
     return L.join("\n");
   }
 
   function textbookMd(course, unit) {
-    var head = ["---", "과정: " + course.title, "교과목: " + unit.title, "소요: " + unit.hours + "시간", "date: " + todayStr(), "status: 초안", "---", ""];
-    return head.join("\n") + unit.modules.map(function (m, mi) { return textbookModuleMd(course, unit, mi); }).join("\n---\n\n");
+    return unit.modules.map(function (m, mi) { return textbookModuleMd(course, unit, mi); }).join("\n" + SECTION_GAP + "\n\n");
   }
 
   /* 단원 교수안 — 기존 교수안.md 형태 유지(도입 / 전개 N / 정리 + 각부 소요 시간) */

@@ -243,7 +243,9 @@
       "[진행 단계]", steps, "",
       "[A 교재 작성 규칙]", STYLE_RULES,
       "- 개요: 이 학습모듈을 왜 배우는지 — 어떤 문제 상황이 있는지 / 무엇을 해결해야 하는지 / 학습 후 무엇이 가능해지는지 (3~5문장).",
-      "- 학습내용은 학습목표 하나당 한 덩어리입니다(목표 " + objs.length + "개 = 덩어리 " + objs.length + "개). 각 덩어리는 정의·원리·구체 예시 2개 이상을 담고 400~900자, 필요하면 목록·표를 씁니다.",
+      "- 학습내용은 학습목표 하나당 한 덩어리입니다(목표 " + objs.length + "개 = 덩어리 " + objs.length + "개). 각 덩어리는 정의·원리·구체 예시 2개 이상을 담습니다.",
+      "- " + ((K.courseRules && K.courseRules.LESSON_STYLE) || "학습내용 본문은 '## 소주제'와 '- ' 글머리 문장으로 씁니다.").replace(/^13\.\s*/, ""),
+      "- 오늘의 퀘스트(기본 실습): 이 학습모듈을 마친 뒤 수행하는 실습 과제 하나 — 제목 한 줄과 수행할 일 2~4줄('- ~합니다.', 결과물 형식 포함).",
       "- 체크리스트는 학습목표와 1:1로, 학습자가 스스로 확인하는 질문 문장입니다('~할 수 있습니까?').",
       "",
       "[B 교수안 규칙] 진행 단계마다 아래 네 줄을 씁니다. 멘트 예시는 강사가 실제로 말하듯 1~2문장입니다.",
@@ -254,7 +256,8 @@
     L.push("[출력 형식 — 아래 구분자와 순서를 그대로 지키고 다른 말은 쓰지 않습니다]",
       "@@개요@@", "(개요)");
     objs.forEach(function (o, i) { L.push("@@내용 " + (i + 1) + "@@", "제목: (소제목)", "(본문)"); });
-    L.push("@@체크리스트@@", objs.map(function (o, i) { return (i + 1) + ". (질문)"; }).join("\n"), "@@교수안@@");
+    L.push("@@체크리스트@@", objs.map(function (o, i) { return (i + 1) + ". (질문)"; }).join("\n"),
+      "@@실습@@", "제목: (오늘의 퀘스트 제목)", "- (수행할 일)", "@@교수안@@");
     (m.flow || []).forEach(function (f, i) { L.push("#" + (i + 1), "**강사 활동**: …", "**설명 내용**: …", "**멘트 예시**: \"…\"", "**학생 활동**: …"); });
     if (withSlides) L.push("@@슬라이드@@", "(### 슬라이드 블록들)");
     return L.join("\n");
@@ -284,7 +287,15 @@
       var mm = guideRaw.split(/^#\s*\d+\s*$/m);
       return (mm[i + 1] || "").trim();
     });
-    return { overview: s["개요"] || "", sections: sections, checklist: checklist, guide: guide, slides: s["슬라이드"] || "" };
+    return { overview: s["개요"] || "", sections: sections, checklist: checklist, guide: guide, slides: s["슬라이드"] || "", quest: parseQuest(s["실습"]) };
+  }
+  /* 오늘의 퀘스트 — "제목: …" 한 줄 + "- 수행할 일" 줄들 → {title, steps} (없으면 null) */
+  function parseQuest(raw) {
+    var lines = String(raw || "").split("\n").map(function (l) { return l.trim(); }).filter(Boolean);
+    var tm = lines.map(function (l) { return l.match(/^제목\s*[:：]\s*(.+)$/); }).filter(Boolean)[0];
+    var steps = lines.filter(function (l) { return /^[-*•]\s+/.test(l); }).map(function (l) { return l.replace(/^[-*•]\s+/, "").trim(); }).filter(Boolean);
+    var title = tm ? tm[1].trim() : (lines[0] && !/^[-*•]\s+/.test(lines[0]) ? lines[0] : "");
+    return title || steps.length ? { title: title.replace(/^[⚙️\s]+/, ""), steps: steps.slice(0, 6) } : null;
   }
 
   function slidesPrompt(course, unit, m, content) {
