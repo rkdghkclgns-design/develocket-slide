@@ -126,13 +126,14 @@
   /* ---------- 학습모듈(블록) — LMS 메타데이터 포함 ----------
    * status: 작성중·검수중·완료·개선필요 (지침: 유지보수 대상은 '개선필요'로 바꾸고 주기적으로 몰아서 처리)
    * tools: 사용 툴과 버전 / prereqs: 선행 학습모듈 / changelog: 변경 이력 / review: 수동 검수 확인 시각
-   * ncs: 능력단위요소 대응 {recs, chosen, note} / ills: SVG 삽화 / ideas: 삽화 후보 / gen: 초안 생성 옵션 */
+   * ncs: 능력단위요소 대응 {recs, chosen, note} / ills: SVG 삽화 / ideas: 삽화 후보 / gen: 초안 생성 옵션
+   * photos: 교안 본문 이미지 [{id, sec, sub, title, points, prompt}] — 학습내용(sec)의 소제목(sub) 아래에 들어간다(lesson-images.js) */
   var STATUSES = ["작성중", "검수중", "완료", "개선필요"];
   function newModule(fields) {
     var m = {
       id: uid("m"), title: "새 블록", minutes: 60, objectives: [], flow: null, content: null, questions: [],
       status: "작성중", category: "", tools: [], prereqs: [], changelog: [{ at: Date.now(), t: "학습모듈 생성" }],
-      review: {}, ncs: { recs: [], chosen: [], note: "" }, ills: [], ideas: [], gen: {}
+      review: {}, ncs: { recs: [], chosen: [], note: "" }, ills: [], ideas: [], gen: {}, photos: []
     };
     for (var k in fields) if (Object.prototype.hasOwnProperty.call(fields, k)) m[k] = fields[k];
     if (!m.flow) m.flow = defaultFlow(m.minutes, m.title);
@@ -141,7 +142,7 @@
   /* 예전에 저장된 모듈에 빠진 필드를 채운다 (체크리스트 다시 볼 곳 포함) */
   function ensureModule(m) {
     var d = newModule({});
-    ["status", "category", "tools", "prereqs", "changelog", "review", "ncs", "ills", "ideas", "gen", "questions", "objectives"].forEach(function (k) {
+    ["status", "category", "tools", "prereqs", "changelog", "review", "ncs", "ills", "ideas", "gen", "questions", "objectives", "photos"].forEach(function (k) {
       if (m[k] == null) m[k] = d[k];
     });
     if (!m.ncs.recs) m.ncs.recs = [];
@@ -217,6 +218,7 @@
       else if (x.placement > i) x.placement -= 1;
     });
     (m.ncs.recs || []).forEach(function (r) { r.covers = (r.covers || []).filter(function (c) { return c !== i; }).map(function (c) { return c > i ? c - 1 : c; }); });
+    m.photos = dropPhotos(m.photos, function (p) { return p.sec === i; }).map(function (p) { return p.sec > i ? Object.assign({}, p, { sec: p.sec - 1 }) : p; });
     m.ideas = (m.ideas || []).filter(function (x) { return x.section !== i; }).map(function (x) { return x.section > i ? Object.assign({}, x, { section: x.section - 1 }) : x; });
     logChange(m, "학습목표 " + no + " 삭제" + (label ? ": " + label.slice(0, 40).trim() : "") +
       (affected ? (qMode === "delete" ? ", 문항 " + affected + "개 삭제" : ", 문항 " + affected + "개 연결 해제") : ""));
@@ -229,7 +231,12 @@
     (m.ills || []).forEach(function (x) { if (x.placement != null && x.placement >= n) x.placement = null; });
     ((m.ncs && m.ncs.recs) || []).forEach(function (r) { r.covers = (r.covers || []).filter(function (c) { return c < n; }); });
     m.ideas = (m.ideas || []).filter(function (x) { return x.section < n; });
+    m.photos = dropPhotos(m.photos, function (p) { return p.sec >= n; });
     return m;
+  }
+  /* 없어진 학습내용의 본문 이미지는 뺀다 — 보관소의 그림은 다른 곳이 쓰지 않으면 저장할 때 정리한다(lesson-images gc) */
+  function dropPhotos(list, gone) {
+    return (list || []).filter(function (p) { return !gone(p); });
   }
 
   /* 마크다운 이미지 문법이 깨지지 않게: 괄호 등은 퍼센트 인코딩, 대체 글자의 []·줄바꿈 제거 */
@@ -519,7 +526,8 @@
   /* ---------- 학습자용 교안(교재) — 기관에서 쓰던 기존 교안 양식 ----------
    * # {학습모듈} 개요(## 학습 목표 · ## 학습 개요) → # {학습내용 제목}(학습목표와 1:1, ## 소주제 + 글머리 문장)
    * → ## ✅ 학습 후 체크리스트 → ## ❗오늘의 퀘스트(기본 실습). 큰 주제 사이는 <br> 여백.
-   * 예전에 줄글로 써 둔 본문은 문장마다 글머리로 바꾸고 ### 소제목은 ## 로 올린다(저장된 내용은 그대로).
+   * 예전에 줄글로 써 둔 본문은 문장마다 글머리로 바꾸고 ### 소제목은 ## 로 올린다(ensureModule 이 저장 내용도 한 번 바꿈).
+   * 삽화(SVG)는 학습내용 제목 아래, 본문 이미지(photos)는 해당 소제목 아래 [이미지:id] 줄로 넣는다(화면·내려받기에서 그림으로 풂).
    * 상태·툴·NCS·변경 이력은 화면에 보이지 않는 주석으로 맨 위에 남긴다. */
   var SECTION_GAP = "<br><br><br><br>";
   function sentences(text) {
@@ -545,6 +553,26 @@
     });
     flush();
     return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+  /* 교안 본문 이미지 — 소제목(## sub) 바로 아래 [이미지:id] 줄, 소제목을 못 찾으면(이름이 바뀜) 학습내용 맨 위 */
+  /* 줄마다 코드 블록(``` · ~~~) 안인지 — 코드 속 '## …'·'- …' 를 소제목·글머리로 보지 않게 (울타리 줄 자신도 안) */
+  function fenced(lines) {
+    var inside = false;
+    return lines.map(function (l) {
+      if (/^\s*(```|~~~)/.test(l)) { inside = !inside; return true; }
+      return inside;
+    });
+  }
+  function placePhotos(body, photos) {
+    if (!photos.length) return body;
+    var lines = String(body || "").split("\n"), top = [];
+    photos.forEach(function (p) {
+      var tag = "[이미지:" + p.id + "]", at = -1, fz = fenced(lines);
+      for (var k = 0; p.sub && k < lines.length; k++) if (!fz[k] && /^##\s/.test(lines[k]) && lines[k].replace(/^##\s+/, "").trim() === p.sub) { at = k; break; }
+      if (at === -1) top.push(tag, "");
+      else lines.splice(at + 1, 0, "", tag, "");
+    });
+    return top.concat(lines).join("\n").replace(/\n{3,}/g, "\n\n").trim();
   }
   function metaComment(course, unit, m, mi) {
     var tools = (m.tools || []).filter(function (t) { return t.name || t.version; }).map(function (t) { return [t.name, t.version].filter(Boolean).join(" "); });
@@ -592,7 +620,8 @@
       (m.ills || []).filter(function (x) { return x.placement === i && x.svg; }).forEach(function (x) {
         L.push("![" + (mdAlt(x.caption || x.title) || "삽화") + "](" + svgDataUri(x.svg) + ")", "");
       });
-      L.push(lessonBody(sec.body) || "- (학습목표 " + (i + 1) + "에 대응하는 내용)", "");
+      var photos = (m.photos || []).filter(function (p) { return p.sec === i && p.id; });
+      L.push(placePhotos(lessonBody(sec.body), photos) || "- (학습목표 " + (i + 1) + "에 대응하는 내용)", "");
       L.push(SECTION_GAP, "");
     });
     L.push("## ✅ 학습 후 체크리스트", "");
@@ -732,6 +761,6 @@
     newQuestion: newQuestion, validateQuestion: validateQuestion, distribution: distribution, questionsToCsv: questionsToCsv,
     ncsUnit: ncsUnit, ncsSearch: ncsSearch, ncsSubdList: ncsSubdList, objectiveRefs: objectiveRefs,
     courseMd: courseMd, textbookMd: textbookMd, textbookModuleMd: textbookModuleMd, lessonPlanMd: lessonPlanMd, deckMd: deckMd, unitSteps: unitSteps,
-    MIN_PER_HOUR: MIN_PER_HOUR, ncsLine: ncsLine
+    MIN_PER_HOUR: MIN_PER_HOUR, ncsLine: ncsLine, lessonBody: lessonBody, placePhotos: placePhotos, fenced: fenced
   };
 })();

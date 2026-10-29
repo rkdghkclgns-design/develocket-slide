@@ -279,11 +279,13 @@
     r.readAsText(f, "utf-8");
     importInput.value = "";
   });
-  /* 현재 소스 MD·참고이미지 — HTML 내보내기에 내장되어 '불러오기'에서 한번에 복원된다 */
+  /* 현재 소스 MD·참고이미지 — HTML 내보내기에 내장되어 '불러오기'에서 한번에 복원된다
+     자동 이미지 표시([이미지:id])는 그림으로 풀어 넣는다 — 다른 브라우저에서 불러와도 그림이 남게 */
   K.getSource = function () {
+    var expand = function (md) { return K.autoImages ? K.autoImages.expandTags(md || "") : md || ""; };
     return {
-      doc: state.docText || "",
-      deck: state.deckText || "",
+      doc: expand(state.docText),
+      deck: expand(state.deckText),
       source: state.sourceText || "",
       refs: (K.getRefImages ? K.getRefImages() : [])
     };
@@ -341,7 +343,7 @@
       refreshConvert(); refreshGenerate();
       // 교수안 탭 — MD에서 문서를 다시 렌더(이미지·참고 이미지 갤러리 포함)
       if (state.docText) {
-        K.buildDoc(K.parseDoc(state.docText), document.getElementById("doc-mount"));
+        K.buildDoc(K.parseDoc(docWithImages()), document.getElementById("doc-mount"));
         tabbar.appendChild(makeTab("doc", "📖 교수안", null));
       }
     }
@@ -434,7 +436,7 @@
     var part = parts ? parts[partIdx] : null;
     tabbar.innerHTML = "";
     if (hasDoc) {
-      K.buildDoc(K.parseDoc(state.docText), document.getElementById("doc-mount"));
+      K.buildDoc(K.parseDoc(docWithImages()), document.getElementById("doc-mount"));
       tabbar.appendChild(makeTab("doc", "📖 교수안", null));
     }
     if (hasDeck) {
@@ -491,6 +493,9 @@
     });
     if (!deckOnly && K.editor) K.editor.setEdit(false);
   }
+
+  /* 교수안 본문의 자동 이미지 표시([이미지:id] 줄)를 그림으로 풀어 문서로 만든다 */
+  function docWithImages() { return K.autoImages ? K.autoImages.expandTags(state.docText) : state.docText; }
 
   /* 📄 교안 MD 탭(md-pane.js)이 읽는 지금 결과 — 교수안·편성안·교재 + 부 목록 */
   function currentMd() {

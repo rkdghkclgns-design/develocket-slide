@@ -3,6 +3,7 @@
  *     사용자가 「확정」하거나 선택을 고쳐 「저장」하면 확정된다. 확정한 선택은 다시 자동 배정하지 않는다.
  *   · 삽화 자동 생성: 교재 학습내용마다 SVG 삽화를 그려 그 자리에 배치한다(과정 아트 스타일 가이드·기준 삽화를 따름).
  *     기준 삽화가 없으면 처음 그린 삽화를 기준으로 삼아 과정 전체의 화풍을 맞춘다.
+ *   · 교안 본문 이미지: 학습내용의 소제목 아래에 그 내용을 보여 주는 그림을 넣는다(lesson-images.js — 이미지 자동 생성 설정·Google 키가 있을 때).
  *   K.courseAuto = { settings, topPicks, unitEntry, assignUnit, assignUnits, assignModule, illustrate, afterTextbook } */
 (function () {
   "use strict";
@@ -108,12 +109,22 @@
     });
   }
 
-  /* 교재를 쓴 직후: 삽화 자동 생성 → 능력단위요소 자동 배정 */
+  /* 교안 본문 이미지 — 실패해도 교재 작성은 이어 간다 */
+  function photos(course, unit, m, label) {
+    if (!K.lessonImages || !K.lessonImages.enabled()) return Promise.resolve(0);
+    return K.lessonImages.generate(course, unit, m, label).then(function (r) { return r.made; }, function (e) { if (isCancel(e)) throw e; return 0; });
+  }
+  function needsPhotos(m) { return !!(K.lessonImages && K.lessonImages.needs(m)); }
+
+  /* 교재를 쓴 직후: 삽화 자동 생성 → 교안 본문 이미지 → 능력단위요소 자동 배정 */
   function afterTextbook(course, unit, m, onLabel) {
-    var out = { ills: 0, ncs: false };
+    var out = { ills: 0, photos: 0, ncs: false };
     var label = typeof onLabel === "function" ? onLabel : function () {};
     return illustrate(course, unit, m, label).then(function (n) {
       out.ills = n;
+      return photos(course, unit, m, label);
+    }).then(function (n) {
+      out.photos = n;
       label("NCS 능력단위요소 자동 배정 · " + m.title);
       return assignModule(course, unit, m).catch(function (e) { if (isCancel(e)) throw e; return false; });
     }).then(function (did) { out.ncs = did; return out; });
@@ -123,13 +134,16 @@
      교재가 있는 학습모듈: 아직 자동 삽화를 돌려 본 적 없으면 삽화, 능력단위요소를 배정해 본 적 없으면 NCS — 학습모듈마다 한 번만 */
   function needsArt(course, m) { return canDraw(course) && !m.autoArtDone && bareSections(m).length > 0; }
   function needsNcs(m) { return (m.objectives || []).length > 0 && !(m.ncs.chosen || []).length && !m.ncs.autoTried; }
-  function needsFill(course, m) { return !!(K.courseAI && K.courseAI.hasTextbook(m)) && (needsArt(course, m) || needsNcs(m)); }
+  function needsFill(course, m) { return !!(K.courseAI && K.courseAI.hasTextbook(m)) && (needsArt(course, m) || needsPhotos(m) || needsNcs(m)); }
   function needsUnitNcs(u) { return !(u.ncs || []).length && !u.ncsAutoTried; }
   function fillModule(course, unit, m, onLabel) {
-    var out = { ills: 0, ncs: false };
+    var out = { ills: 0, photos: 0, ncs: false };
     var label = typeof onLabel === "function" ? onLabel : function () {};
     return (needsArt(course, m) ? illustrate(course, unit, m, label) : Promise.resolve(0)).then(function (n) {
       out.ills = n;
+      return needsPhotos(m) ? photos(course, unit, m, label) : 0;
+    }).then(function (n) {
+      out.photos = n;
       if (!needsNcs(m)) return false;
       label("NCS 능력단위요소 자동 배정 · " + m.title);
       return assignModule(course, unit, m).catch(function (e) { if (isCancel(e)) throw e; return false; });
@@ -174,5 +188,5 @@
 
   K.courseAuto = { settings: settings, topPicks: topPicks, unitEntry: unitEntry, assignUnit: assignUnit, assignUnits: assignUnits,
     assignModule: assignModule, illustrate: illustrate, afterTextbook: afterTextbook, isCancel: isCancel,
-    needsFill: needsFill, needsUnitNcs: needsUnitNcs, fillModule: fillModule, existingWork: existingWork, applyExisting: applyExisting };
+    needsFill: needsFill, needsPhotos: needsPhotos, needsUnitNcs: needsUnitNcs, fillModule: fillModule, existingWork: existingWork, applyExisting: applyExisting };
 })();

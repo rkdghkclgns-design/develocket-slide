@@ -1,7 +1,9 @@
 /* auto.test.js — 자동 단계 테스트
  *
  *   auto-images.js : 슬라이드 고르기 · 편성안 표시 달기 · 이미지 주소 풀기 · 자동 생성(같은 프롬프트 재사용·연속 실패 시 멈춤·키 없음)
+ *                    내용에 맞는 프롬프트(막연한 시각 제안 대신 슬라이드 내용) · 교수안(대응 단계)·교안(같은 내용 소제목) 본문에 넣기 · 교안 그림 재사용
  *   course-auto.js : NCS 자동 배정(교과목 능력단위·학습모듈 능력단위요소, 확정한 선택은 유지) · 삽화 자동 생성(배치·기준 삽화·취소 전달)
+ *   lesson-images.js : 교안 본문 이미지(소제목 고르기·생성·소제목 아래 배치·빼기·다시 만들기·기존 교재 보강)
  *
  * 실행:  node tests/auto.test.js   (성공 exit 0, 실패 exit 1)
  */
@@ -217,6 +219,155 @@ function load(ctx, file) { vm.runInContext(fs.readFileSync(path.join(ASSETS, fil
   eq(CA.existingWork(oc).modules.length + CA.existingWork(oc).units.length, 0, "보강은 한 번만 — 다시 대상이 되지 않음");
   om.ills = []; // 사용자가 삽화를 지워도
   ok(!CA.needsFill(oc, om), "지운 삽화를 다시 그리지 않음");
+
+  /* ================= 내용에 맞는 이미지 + MD 본문에 넣기 (auto-images.js) ================= */
+  const b = sandbox();
+  load(b, "parser.js");
+  load(b, "generate.js");
+  load(b, "auto-images.js");
+  const BK = b.KBuilder, BA = BK.autoImages;
+  BK.AI = { hasKey: () => true };
+  const prompts = [];
+  BK.genImage = (p) => { prompts.push(p); return Promise.resolve("data:image/png;base64,P" + prompts.length); };
+  BA.setCount(4);
+  const sdeck = [
+    "---", "주제: 생성형 AI 기초", "---", "", "## 슬라이드 편성", "",
+    "### 슬라이드 1 - 표지", "- 대응 교수안: -", "- 슬라이드 문구:", "  - (제목) 생성형 AI", "- 이미지/시각: 차시 주제를 상징하는 대표 일러스트", "",
+    "### 슬라이드 2 - 학습목표: 생성형 AI의 종류", "- 대응 교수안: 도입", "- 슬라이드 문구:", "  - 종류를 구분할 수 있다", "- 이미지/시각: 목표 체크 아이콘", "",
+    "### 슬라이드 3 - 머신러닝과 딥러닝", "- 대응 교수안: 전개 1", "- 슬라이드 문구:", "  - 머신러닝은 데이터에서 규칙을 배웁니다", "  - 딥러닝은 신경망을 깊게 쌓은 방법입니다", "- 이미지/시각: 관련 이미지", "",
+    "### 슬라이드 4 - 텍스트 생성 모델", "- 대응 교수안: 전개 2", "- 슬라이드 문구:", "  - 다음 단어를 예측해 문장을 이어 씁니다", "- 이미지/시각: 말풍선을 이어 쓰는 로봇", "",
+    "### 슬라이드 5 - 체크리스트: 생성형 AI의 종류", "- 대응 교수안: 정리", "- 슬라이드 문구:", "  - 확인", "- 이미지/시각: 체크리스트", ""
+  ].join("\n");
+  eq(BA.pick(BK.parseDeck(sdeck).slides, 9).map((p) => p.s.title).join(","), "머신러닝과 딥러닝,텍스트 생성 모델", "학습목표·체크리스트 같은 꾸밈 슬라이드는 고르지 않음");
+  const sdoc = ["# 교수안", "", "## 진행", "", "### 도입 - 동기 유발 (5분)", "", "설명", "", "### 전개 10 - 다른 단계 (5분)", "", "설명",
+    "", "### 전개 1 - 머신러닝과 딥러닝 (20분)", "", "**설명 내용**: 관계", "", "### 전개 2 - 텍스트 생성 (20분)", "", "설명"].join("\n");
+  const stext = ["# 생성형 AI의 종류 개요", "", "## 학습 목표", "", "- 종류를 구분할 수 있다", "", "# AI의 범위", "",
+    "## 머신러닝과 딥러닝", "- 머신러닝은 데이터에서 규칙을 배웁니다.", "- 딥러닝은 신경망을 깊게 쌓은 방법입니다.", "", "## 텍스트 생성 모델", "- 다음 단어를 예측해 문장을 이어 씁니다."].join("\n");
+  const sr = await BA.run([{ label: "1차시", title: "생성형 AI", deckMd: sdeck, docMd: sdoc, textMd: stext }]);
+  eq(sr.made, 2, "내용 슬라이드 2장 생성");
+  ok(prompts.every((p) => !/관련 이미지|목표 체크/.test(p)), "막연한 시각 제안('관련 이미지')은 프롬프트에 쓰지 않음");
+  ok(/^머신러닝과 딥러닝/.test(prompts[0]) && /딥러닝은 신경망을 깊게 쌓은 방법입니다/.test(prompts[0]), "프롬프트를 슬라이드 제목과 핵심 내용으로");
+  ok(/^말풍선을 이어 쓰는 로봇/.test(prompts[1]) && /주제: 텍스트 생성 모델/.test(prompts[1]), "구체적인 시각 제안은 그대로 앞에 + 슬라이드 주제");
+  ok(prompts.every((p) => /생성형 AI 기초/.test(p) && /상관없는/.test(p)), "강의 주제 + 내용과 상관없는 그림 금지");
+  const sp = sr.parts[0];
+  const dl = sp.docMd.split("\n");
+  const i1 = dl.findIndex((l) => /^### 전개 1 -/.test(l)), i10 = dl.findIndex((l) => /^### 전개 10/.test(l));
+  ok(/^\[이미지:ai[\w-]+\]$/.test(dl[i1 + 2]), "교수안: 대응 단계(전개 1) 제목 아래에 이미지 줄");
+  ok(!/\[이미지:/.test(dl[i10 + 2] || ""), "전개 10 에는 넣지 않음");
+  const byLabel = BA.placeDoc(sdoc, [{ id: "zz", title: "전혀 다른 말", text: "", maps: "전개 1" }]).split("\n");
+  eq(byLabel[byLabel.indexOf("[이미지:zz]") - 2], "### 전개 1 - 머신러닝과 딥러닝 (20분)", "내용이 같은 단계가 없으면 '대응 교수안' 단계 아래 (전개 10 을 전개 1 로 보지 않음)");
+  ok(BA.placeDoc(sdoc, [{ id: "yy", title: "전혀 다른 말", text: "", maps: "도입" }]).indexOf("[이미지:yy]") === -1, "도입·정리 단계에는 내용 그림을 억지로 넣지 않음");
+  eq((sp.docMd.match(/\[이미지:/g) || []).length, 2, "교수안에 슬라이드 이미지 2장");
+  const tl = sp.textMd.split("\n");
+  const h1 = tl.indexOf("## 머신러닝과 딥러닝"), h2 = tl.indexOf("## 텍스트 생성 모델");
+  ok(/^\[이미지:/.test(tl[h1 + 2]) && /^\[이미지:/.test(tl[h2 + 2]), "교안: 내용이 같은 소제목 바로 아래에 이미지 줄");
+  ok(!/\[이미지:/.test(tl.slice(0, tl.indexOf("# AI의 범위")).join("\n")), "내용이 다른 제목에는 넣지 않음");
+  const sx = BA.expandTags(sp.textMd);
+  ok(/\n## 머신러닝과 딥러닝\n\n!\[머신러닝과 딥러닝\]\(data:image\/png;base64,P\d\)\n/.test(sx), "본문 표시는 제 줄에서 그림으로(제목 줄은 그대로, 대체 글자 = 슬라이드 제목)");
+  ok(!/\[이미지:/.test(BA.expandTags("## 제목\n\n[이미지:없는것]\n\n- 글")), "모르는 본문 표시는 지움");
+  // 교안 본문 이미지와 내용이 같은 슬라이드는 새로 만들지 않고 그 그림을 쓴다
+  const pid = BA.put("data:image/png;base64,PHOTO", "머신러닝과 딥러닝", "교안 프롬프트", true);
+  const shots = prompts.length;
+  const photoImgs = [{ id: pid, title: "머신러닝과 딥러닝", text: "딥러닝은 신경망을 깊게 쌓은 방법입니다." }];
+  eq(BA.countJobs([{ deckMd: sdeck, images: photoImgs }]), 0, "미리 세기: 교안 그림으로 채우는 슬라이드·이미 만든 프롬프트는 빼고");
+  const rr = await BA.run([{ title: "생성형 AI", deckMd: sdeck.replace(/로봇/g, "곰"), docMd: sdoc, textMd: stext, images: photoImgs }]);
+  eq(prompts.length - shots, 1, "교안 그림을 쓴 슬라이드는 새로 만들지 않음 (1장만 생성)");
+  ok(rr.reused === 1 && rr.parts[0].deckMd.indexOf("[이미지:" + pid + "]") !== -1, "그 슬라이드에 교안 그림 표시");
+  ok(/교안 본문 이미지 1장/.test(BA.summary(rr)), "요약에 교안 그림 재사용 안내");
+  const pid2 = BA.put("data:image/png;base64,PH2", "텍스트 생성", "교안 프롬프트2", true);
+  const ro = await BA.run([{ deckMd: "## 슬라이드 편성\n\n### 슬라이드 1 - 표지\n- 슬라이드 문구:\n  - (제목) x\n- 이미지/시각: 대표 일러스트", docMd: sdoc,
+    images: [{ id: pid2, title: "텍스트 생성", text: "다음 단어를 예측해 문장을 이어 씁니다." }, { id: "없는그림", title: "도입", text: "" }] }]);
+  const rl = ro.parts[0].docMd.split("\n");
+  eq(rl[rl.indexOf("[이미지:" + pid2 + "]") - 2], "### 전개 2 - 텍스트 생성 (20분)", "슬라이드에 쓰지 않은 교안 그림도 내용이 같은 교수안 단계 아래에");
+  ok(ro.parts[0].docMd.indexOf("없는그림") === -1, "보관소에 없는 그림은 넣지 않음");
+  // 코드 블록 속 '# 주석'은 제목이 아니다
+  const codeMd = ["# 변수 선언", "- 값을 이름에 담습니다.", "```python", "# 변수 선언 예시", "x = 1", "```", "", "# 반복문", "- 같은 일을 되풀이합니다."].join("\n");
+  const cp = BA.placeText(codeMd, [{ id: "cc", title: "변수 선언 예시", text: "" }]).split("\n");
+  const ci = cp.indexOf("[이미지:cc]");
+  ok(ci !== -1 && cp[ci - 2] === "# 변수 선언" && cp.indexOf("```python") > ci, "코드 블록 안 주석 줄이 아니라 진짜 제목 아래에 넣음");
+  // 정리: 고정(교안) 그림은 세지 않고, 방금 만든 그림은 지우지 않음
+  const pins = [];
+  for (let i = 0; i < BA.KEEP; i++) pins.push(BA.put("data:image/png;base64,PIN" + i, "핀" + i, "", true));
+  const fresh1 = BA.put("data:image/png;base64,FRESH", "새 그림", "새 프롬프트", false);
+  ok(BA.has(fresh1) && pins.every((id) => BA.has(id)), "교안에 고정한 그림이 많아도 방금 만든 그림은 남음");
+  BA.releasePinned(pins.slice(0, 3));
+  ok(BA.has(pins[0]) && !BA.has(pins[5]) && BA.has(fresh1), "과정이 쓰지 않는 고정 그림만 정리(고정 안 한 그림은 그대로)");
+
+  /* ================= 교안 본문 이미지 (lesson-images.js · course-model placePhotos) ================= */
+  load(c, "auto-images.js");
+  load(c, "lesson-images.js");
+  const LI = CK.lessonImages;
+  CK.AI = { hasKey: () => true };
+  const lcalls = [];
+  CK.genImage = (p) => { lcalls.push(p); return Promise.resolve("data:image/png;base64,L" + lcalls.length); };
+  CK.recommendImagePrompt = (x) => "P:" + x.title + "|" + x.subject + "|" + (x.points || []).join("/");
+  const pm = C.newModule({ title: "생성형 AI의 종류" });
+  pm.objectives = ["생성형 AI의 종류를 구분할 수 있다.", "LLM 의 동작을 설명할 수 있다."];
+  pm.content = { overview: "- 개요", sections: [
+    { title: "생성형 AI의 종류", body: "## 텍스트 생성\n- 문장을 이어 씁니다.\n- 요약과 번역을 합니다.\n\n## 이미지 생성\n- 그림을 그립니다." },
+    { title: "LLM", body: "LLM은 다음 단어를 예측합니다. 많은 글을 학습합니다." }], checklist: [] };
+  u.modules.push(pm);
+  const pmi = u.modules.length - 1;
+  const tg = LI.targets(pm);
+  eq(tg.map((t) => t.sec + ":" + (t.sub || "-")).join(","), "0:텍스트 생성,1:-", "학습내용마다 내용이 가장 많은 소제목 하나(없으면 학습내용 전체)");
+  ok(tg[0].points.length === 2 && /문장을 이어 씁니다/.test(tg[0].points[0]), "그 소제목의 글머리를 프롬프트 재료로");
+  ok(LI.needs(pm), "교재가 있고 본문 이미지가 없으면 만들 대상");
+  const lr = await LI.generate(course, u, pm);
+  eq(lr.made, 2, "학습내용마다 그림 하나씩");
+  ok(lcalls[0].indexOf("P:텍스트 생성|") === 0 && /생성형 AI의 종류/.test(lcalls[0]) && /문장을 이어 씁니다/.test(lcalls[0]), "프롬프트: 소제목 + 과정·블록·학습내용 + 글머리");
+  ok(pm.photos.length === 2 && pm.photos[0].sub === "텍스트 생성" && pm.photos[0].sec === 0 && pm.autoPhotoDone, "블록에 저장(학습내용·소제목) + 한 번 돌았음 표시");
+  ok(!LI.needs(pm), "다 넣은 뒤에는 대상이 아님");
+  const tmd = C.textbookModuleMd(course, u, pmi), tml = tmd.split("\n");
+  eq(tml[tml.indexOf("## 텍스트 생성") + 2], "[이미지:" + pm.photos[0].id + "]", "교안 MD: 소제목 바로 아래에 이미지 줄");
+  ok(tmd.indexOf("[이미지:" + pm.photos[1].id + "]") > tmd.indexOf("# LLM"), "소제목이 없는 학습내용은 그 학습내용 맨 위");
+  ok(/\n!\[텍스트 생성\]\(data:image\/png;base64,L1\)\n/.test(CK.autoImages.expandTags(tmd)), "교안 MD 를 풀면 소제목 아래 그림");
+  const fsx = LI.forSession(u, { mods: [pm.id] });
+  ok(fsx.length === 2 && fsx[0].title === "텍스트 생성" && /문장을/.test(fsx[0].text), "차시(블록 id)에 걸친 블록의 교안 그림 목록");
+  eq(LI.forSession(u, { mods: [pmi] }).length, 2, "블록 번호로 된 차시도");
+  // 같은 그림을 다른 블록도 쓰면(같은 프롬프트) 한 블록에서 빼도 보관소에는 남는다
+  const twin = C.newModule({ title: "쌍둥이" });
+  twin.photos = [Object.assign({}, pm.photos[0])];
+  course.trash = [{ at: Date.now(), module: twin }];
+  const gone = pm.photos[0].id;
+  ok(LI.remove(course, pm, gone) && pm.photos.length === 1 && CK.autoImages.has(gone), "빼기 — 휴지통의 다른 블록이 같은 그림을 쓰면 보관소에 남김");
+  course.trash = [];
+  LI.gc(course);
+  ok(!CK.autoImages.has(gone), "아무도 쓰지 않게 되면 저장할 때 보관소에서도 지움");
+  ok(C.textbookModuleMd(course, u, pmi).indexOf(gone) === -1, "뺀 그림은 교안에서 사라짐");
+  ok(!LI.needs(pm) && LI.missing(pm).length === 1, "뺀 자리는 자동으로 다시 만들지 않지만 직접 채울 수 있게 셈");
+  const keep = pm.photos[0].id;
+  ok(await LI.redo(course, u, pm, keep) && pm.photos[0].id !== keep && !CK.autoImages.has(keep), "다시 만들기 — 같은 자리에 새 그림, 예전 그림은 지움");
+  C.deleteObjective(pm, 0, "keep");
+  ok(pm.photos.length === 1 && pm.photos[0].sec === 0, "학습목표를 지우면 본문 이미지 번호도 당김");
+  CK.autoImages.setCount(0);
+  ok(!LI.enabled(), "이미지 자동 생성이 '끔'이면 만들지 않음");
+  CK.autoImages.setCount(4);
+  const am = C.newModule({ title: "새 블록" });
+  am.objectives = ["형식을 고정할 수 있다."];
+  am.content = { overview: "- 개요", sections: [{ title: "형식 고정", body: "## 표로 고정\n- 열 이름을 정합니다." }], checklist: [] };
+  const at = await CA.afterTextbook(course, u, am);
+  eq(at.photos, 1, "교재를 쓴 직후 본문 이미지도 넣음");
+  const om2 = C.newModule({ title: "예전 블록" });
+  om2.objectives = ["예전 내용을 설명할 수 있다."];
+  om2.content = { overview: "- 개요", sections: [{ title: "예전", body: "- 예전 본문입니다." }], checklist: [] };
+  om2.autoArtDone = true; om2.ncs.autoTried = true;
+  ok(CA.needsFill(course, om2) && CA.needsPhotos(om2), "예전 교재도 본문 이미지가 없으면 보강 대상");
+  eq((await CA.fillModule(course, u, om2)).photos, 1, "기존 교재 보강으로 본문 이미지를 채움");
+  // 연달아 실패해 멈춰도 자동 보강은 한 번만 (매번 다시 시도하지 않음) — 직접 채우기는 가능
+  const fm = C.newModule({ title: "실패 블록" });
+  fm.objectives = ["가", "나"];
+  fm.content = { overview: "- 개요", sections: [{ title: "가", body: "## 가1\n- 가 본문" }, { title: "나", body: "## 나1\n- 나 본문" }], checklist: [] };
+  CK.genImage = () => Promise.reject(new Error("429"));
+  const fr = await LI.generate(course, u, fm);
+  ok(fr.stopped && fr.made === 0 && fm.autoPhotoDone && !LI.needs(fm) && LI.missing(fm).length === 2, "실패로 멈추면 다시 자동 보강하지 않음(빈 자리는 남김)");
+  // 코드 블록 속 '## …'·'- …' 는 소제목·글머리로 보지 않음
+  const cm = C.newModule({ title: "코드 블록" });
+  cm.objectives = ["프롬프트를 쓸 수 있다."];
+  cm.content = { overview: "- 개요", sections: [{ title: "프롬프트 틀", body: "## 틀 쓰기\n- 역할을 먼저 씁니다.\n\n```markdown\n## 역할\n- 하나\n- 둘\n- 셋\n- 넷\n```" }], checklist: [] };
+  eq(LI.targets(cm).map((t) => t.sub).join(","), "틀 쓰기", "코드 블록 속 소제목은 그림 자리로 고르지 않음");
+  cm.photos = [{ id: "cbx", sec: 0, sub: "역할", title: "역할" }];
+  const cmd = C.textbookModuleMd(course, u, (u.modules.push(cm), u.modules.length - 1));
+  ok(cmd.indexOf("[이미지:cbx]") < cmd.indexOf("```markdown"), "코드 블록 속 같은 이름 소제목 아래에는 넣지 않음");
 
   console.log(`auto.test.js: ${passed} 통과, ${failures.length} 실패`);
   if (failures.length) { failures.forEach((f) => console.log("  ✗ " + f)); process.exit(1); }

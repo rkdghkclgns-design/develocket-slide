@@ -341,20 +341,24 @@
   }
 
   /* ---------- 이미지 생성 추천 프롬프트 ---------- */
-  /* 슬롯의 시각 제안 + 슬라이드 제목 + 강의 주제 + 일관 아트 스타일을 묶어
-     바로 생성에 쓸 수 있는 한국어 프롬프트를 만든다. (image-slot _aiGen에서 프리필) */
+  /* 슬롯의 시각 제안 + 슬라이드(소제목) 제목 + 핵심 내용(points) + 강의 주제 + 일관 아트 스타일을 묶어
+     바로 생성에 쓸 수 있는 한국어 프롬프트를 만든다. (image-slot _aiGen 프리필 · 자동 이미지 · 교안 본문 이미지)
+     내용을 직접 보여 주게 하고, 주제와 상관없는 막연한 그림(사람·사무실·추상 배경)은 피하게 한다. */
   function recommendImagePrompt(ctx) {
     ctx = ctx || {};
     var visual = String(ctx.visual || "").trim();
     var title = String(ctx.title || "").trim();
     var subject = String(ctx.subject || "").trim();
+    var points = (ctx.points || []).map(function (p) { return String(p || "").replace(/\s+/g, " ").trim().replace(/[.。]+$/, ""); }).filter(Boolean).slice(0, 5);
     var core = visual || title || subject || "교육 내용을 상징하는 장면";
     var parts = [core];
-    if (title && title !== core && title !== visual) parts.push("슬라이드 주제: " + title);
-    else if (subject && subject !== core) parts.push("강의 주제: " + subject);
+    if (title && title !== core) parts.push("주제: " + title);
+    if (subject && subject !== core && subject !== title) parts.push("강의: " + subject);
+    if (points.length) parts.push("그림에 담을 핵심 내용: " + points.join(" / "));
+    parts.push("교육 자료의 설명 그림 — 위 내용을 직접 보여 주는 장면이나 도식으로, 구성 요소와 관계·순서가 한눈에 보이게. 주제와 상관없는 사람·사무실·추상 배경 그림은 피할 것");
     // 슬라이드 톤과 어울리는 일관 아트 스타일 — 글자 없는 깔끔한 일러스트
-    parts.push("밝고 친근한 플랫 벡터 일러스트레이션, 부드러운 파스텔 색감, 단순하고 깔끔한 배경, 글자·텍스트 없이, 고해상도 교육용 슬라이드 삽화");
-    return parts.join(", ");
+    parts.push("밝고 친근한 플랫 벡터 일러스트레이션, 부드러운 파스텔 색감, 단순하고 깔끔한 배경, 글자·텍스트·숫자·로고 없이, 가로 16:9, 고해상도 교육용 삽화");
+    return parts.join(". ");
   }
 
   /* ---------- 소스 원고 만들기 (사용자 입력 → AI가 360분 분량 원고 작성) ----------

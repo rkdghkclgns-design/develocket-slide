@@ -44,6 +44,8 @@
       lastSaved = JSON.stringify({ course: S.course, draft: S.draft, unit: S.unit, mod: S.mod, tab: S.tab });
       localStorage.setItem(STORE, lastSaved);
       saveFailing = false;
+      // 영구 삭제한 블록·바꾼 과정이 쓰던 교안 그림은 보관소에서도 정리한다 (다른 블록이 쓰는 그림은 남김)
+      if (K.lessonImages) K.lessonImages.gc(S.course);
     } catch (e) {
       // 실패가 새로 시작될 때마다 알린다 (같은 실패가 이어지는 동안은 한 번만)
       if (!saveFailing) toast("브라우저 저장 공간이 부족해 저장하지 못했습니다. 휴지통을 비우거나 삽화를 줄인 뒤 과정 설계서를 내려받아 두세요.");
@@ -450,21 +452,38 @@
     });
   }
 
-  /* 빌드 전에 슬라이드 '이미지/시각' 제안으로 이미지를 자동 생성해 참고 이미지·슬라이드 칸에 넣는다 (Google 키·설정이 있을 때) */
-  function openWithImages(list, index) {
-    var A = K.autoImages;
+  /* 빌드 전에 이미지를 내용에 맞게 자동으로 만든다 (Google 키·설정이 있을 때)
+     1) 교안 본문 이미지가 빠진 블록은 소제목 아래 그림을 먼저 만들고(블록에 저장)
+     2) 슬라이드는 내용이 같은 교안 그림을 쓰고, 나머지는 슬라이드 내용으로 새로 만들어 교수안·교안 본문에도 넣는다
+     build() 는 검토 화면에 넘길 차시 목록 — 교안 그림을 만든 뒤 다시 만든다 */
+  function openWithImages(units, build, index) {
+    var A = K.autoImages, L = K.lessonImages;
     if (!A || !A.count() || !A.available()) {
-      K.app.openReview({ parts: list, index: index, note: A ? A.summary(A.count() ? { skipped: "nokey" } : { skipped: "off" }) : "" });
+      K.app.openReview({ parts: build(), index: index, note: A ? A.summary(A.count() ? { skipped: "nokey" } : { skipped: "off" }) : "" });
       return;
     }
-    var jobs = A.countJobs(list);
-    if (jobs > 12 && !confirm("슬라이드 이미지 " + jobs + "장을 차례로 만듭니다(장당 10~30초). 지금 만들까요?\n[취소]를 누르면 이미지 없이 바로 검토 화면을 엽니다.")) {
-      K.app.openReview({ parts: list, index: index, note: "" });
+    var mods = [];
+    units.forEach(function (u) { u.modules.forEach(function (m) { if (L && L.needs(m)) mods.push({ unit: u, module: m }); }); });
+    var photoN = mods.reduce(function (a, x) { return a + L.missing(x.module).length; }, 0);
+    var slideN = A.countJobs(build());
+    if (photoN + slideN > 12 && !confirm("이미지를 최대 " + (photoN + slideN) + "장(교안 본문 " + photoN + " · 슬라이드 " + slideN + ") 차례로 만듭니다(장당 10~30초). 지금 만들까요?\n[취소]를 누르면 이미지 없이 바로 검토 화면을 엽니다.")) {
+      K.app.openReview({ parts: build(), index: index, note: "" });
       return;
     }
-    run("🖼 슬라이드 이미지 자동 생성 준비 중… (중지하면 만든 이미지까지만 넣고 엽니다)", function (prog, signal) {
-      return A.run(list, prog, function () { return !!(signal && signal.aborted); }).then(function (r) {
-        K.app.openReview({ parts: r.parts, index: index, note: A.summary(r) });
+    run("🖼 이미지 자동 생성 준비 중… (중지하면 만든 이미지까지만 넣고 엽니다)", function (prog, signal) {
+      var stop = function () { return !!(signal && signal.aborted); };
+      var made = 0, chain = Promise.resolve();
+      mods.forEach(function (x, k) {
+        chain = chain.then(function () {
+          if (stop()) return;
+          var head = "🖼 교안 본문 이미지 " + (k + 1) + "/" + mods.length + " · " + x.module.title;
+          prog(k, mods.length, head);
+          return L.generate(S.course, x.unit, x.module, function (l) { prog(k, mods.length, head + " — " + l); }, stop).then(function (r) { made += r.made; if (r.made) save(); });
+        });
+      });
+      return chain.then(function () { return A.run(build(), prog, stop); }).then(function (r) {
+        var note = (made ? "🖼 교안 본문 이미지 " + made + "장을 소제목 아래에 넣었습니다. " : "") + A.summary(r);
+        K.app.openReview({ parts: r.parts, index: index, note: note });
       });
     });
   }
@@ -472,7 +491,8 @@
   /* 검토·빌드 화면으로 넘길 차시 목록 — 드롭다운으로 차시를 오간다 (교재는 그 차시에 걸친 블록만) */
   function sessionParts(u, prefix) {
     return u.outputs.sessions.map(function (s) {
-      return { label: prefix + s.no + "차시. " + s.title + " (" + C.fmtMin(s.minutes) + ")", title: s.title, docMd: s.docMd, deckMd: s.deckMd, textMd: C.sessionTextMd(S.course, u, s) };
+      return { label: prefix + s.no + "차시. " + s.title + " (" + C.fmtMin(s.minutes) + ")", title: s.title, docMd: s.docMd, deckMd: s.deckMd, textMd: C.sessionTextMd(S.course, u, s),
+        images: K.lessonImages ? K.lessonImages.forSession(u, s) : [] };
     });
   }
 
@@ -501,7 +521,7 @@
     if (!w.modules.length && !w.units.length) return "";
     var parts = [];
     if (w.units.length) parts.push("단원 " + w.units.length + "개에 NCS 능력단위 자동 배정");
-    if (w.modules.length) parts.push("교재가 있는 블록 " + w.modules.length + "개에 삽화 그려 넣기·능력단위요소 자동 배정");
+    if (w.modules.length) parts.push("교재가 있는 블록 " + w.modules.length + "개에 삽화·본문 이미지(소제목 아래) 넣기·능력단위요소 자동 배정");
     return '<div class="cs-card cs-existing"><div><b>✨ 기존 작성 내용에도 새 기능 적용</b><p class="cs-sub">' + esc(parts.join(" · ")) +
       ". 자동 배정한 NCS 는 「확정 전」으로 들어가며 ③ 교과목 NCS·학습모듈 NCS 탭에서 확정합니다. 조립해 둔 산출물도 다시 조립합니다.</p></div>" +
       '<div class="cs-spacer"></div><button class="btn btn-primary" data-act="apply-existing">적용하기</button><button class="btn btn-ghost" data-act="apply-later">나중에</button></div>';
@@ -518,7 +538,7 @@
     });
   }
   function reportGen(r) {
-    if (!r.failed.length) { toast("학습모듈 " + r.made + "개의 교재·교수안·슬라이드를 만들었습니다." + (r.filled ? " 기존 교안 " + r.filled + "개는 삽화·NCS 를 채웠습니다." : "")); return; }
+    if (!r.failed.length) { toast("학습모듈 " + r.made + "개의 교재·교수안·슬라이드를 만들었습니다." + (r.filled ? " 기존 교안 " + r.filled + "개는 삽화·본문 이미지·NCS 를 채웠습니다." : "")); return; }
     S.error = "학습모듈 " + r.failed.length + "개를 만들지 못했습니다 — " + r.failed.slice(0, 3).map(function (f) { return "「" + f.module + "」(" + f.error.slice(0, 80) + ")"; }).join(", ") +
       (r.failed.length > 3 ? " 외 " + (r.failed.length - 3) + "개" : "") + ". 만든 " + r.made + "개는 저장했습니다. 「남은 블록 작성」으로 다시 시도하세요.";
   }
@@ -615,7 +635,7 @@
       if (!rest.length && !extra) { toast("모든 학습모듈의 교안이 이미 있습니다."); return; }
       var units = rest.map(function (x) { return x.unit.id; }).filter(function (id, i, a) { return a.indexOf(id) === i; }).length;
       var noObj = rest.filter(function (x) { return !x.module.objectives.length; }).length;
-      if (!confirm((rest.length ? "남은 학습모듈 " + rest.length + "개(단원 " + units + "개)의 교재·교수안·슬라이드를 차례로 만듭니다." : "") + (extra ? " 기존 내용 " + extra + "건에는 삽화·NCS 자동 배정을 채웁니다." : "") + " 블록마다 1~3분 걸리고, 블록을 마칠 때마다 저장하므로 중간에 「중지」해도 만든 것은 남습니다." +
+      if (!confirm((rest.length ? "남은 학습모듈 " + rest.length + "개(단원 " + units + "개)의 교재·교수안·슬라이드를 차례로 만듭니다." : "") + (extra ? " 기존 내용 " + extra + "건에는 삽화·본문 이미지·NCS 자동 배정을 채웁니다." : "") + " 블록마다 1~3분 걸리고, 블록을 마칠 때마다 저장하므로 중간에 「중지」해도 만든 것은 남습니다." +
         (noObj ? "\n학습목표가 없는 블록 " + noObj + "개는 블록 제목 기준으로 씁니다." : "") + "\n계속할까요?")) return;
       run("모든 단원 교안 작성 준비 중…", function (prog) {
         return K.courseAI.generateCourse(S.course, prog, { onModule: function () { save(); } }).then(function (r) { S.tab = "outputs"; reportGen(r); });
@@ -624,16 +644,21 @@
     "assemble": function () { K.courseAI.buildOutputs(S.course, unit()); save(); render(); },
     "open-review": function (el) {
       var u = unit();
-      if (u.outputs && K.app) openWithImages(sessionParts(u, ""), Number(el.dataset.s) || 0);
+      if (u.outputs && K.app) openWithImages([u], function () { return sessionParts(u, ""); }, Number(el.dataset.s) || 0);
     },
     "open-review-all": function () {
-      var list = [], start = 0;
+      var units = [], start = 0;
+      var build = function () {
+        var list = [];
+        S.course.units.forEach(function (u, i) { if (u.outputs) list = list.concat(sessionParts(u, (i + 1) + "단원 ")); });
+        return list;
+      };
       S.course.units.forEach(function (u, i) {
         if (!u.outputs) return;
-        if (i === S.unit) start = list.length;
-        list = list.concat(sessionParts(u, (i + 1) + "단원 "));
+        if (i === S.unit) start = units.reduce(function (a, x) { return a + x.outputs.sessions.length; }, 0);
+        units.push(u);
       });
-      if (list.length && K.app) openWithImages(list, start);
+      if (units.length && K.app) openWithImages(units, build, start);
     },
     "auto-art": function (el) {
       S.course.auto = Object.assign({}, S.course.auto, { art: !!el.checked });
@@ -642,7 +667,7 @@
     "dl-out": function (el) {
       var u = unit(), o = u.outputs, k = el.dataset.k;
       if (!o) return;
-      var md = k === "doc" ? C.sessionsDocMd(S.course, u, o) : k === "deck" ? C.sessionsDeckMd(S.course, u, o) : C.textbookMd(S.course, u);
+      var md = k === "doc" ? C.sessionsDocMd(S.course, u, o) : k === "deck" ? C.sessionsDeckMd(S.course, u, o) : withImages(C.textbookMd(S.course, u));
       download(safeName(el.dataset.file.replace(/\.md$/, "")) + ".md", md);
     },
     "dl-sess": function (el) {
@@ -653,7 +678,7 @@
     "dl-course": function () { download(safeName("과정 설계서 - " + S.course.title) + ".md", C.courseMd(S.course)); },
     "dl-all-text": function () {
       var c = S.course;
-      download(safeName("교재 - " + c.title) + ".md", c.units.map(function (u) { return C.textbookMd(c, u); }).join("\n\n---\n\n"));
+      download(safeName("교재 - " + c.title) + ".md", withImages(c.units.map(function (u) { return C.textbookMd(c, u); }).join("\n\n---\n\n")));
     },
     "dl-qcsv": function () {
       var u = unit(), rows = [];
@@ -775,7 +800,15 @@
 
   document.addEventListener("kb-ai-change", function () { if (document.getElementById("app").dataset.screen === "course") render(); });
 
+  /* 자동 이미지 표시([이미지:id])를 그림으로 — 내려받은 교안 MD 만으로도 그림이 보이게 */
+  function withImages(md) { return K.autoImages ? K.autoImages.expandTags(md) : md; }
+
   load();
+  // 보관해 둔 이미지를 다 읽으면 교재 미리보기 등을 다시 그린다
+  if (K.autoImages && K.autoImages.ready) K.autoImages.ready.then(function () { if (S.course && document.getElementById("app").dataset.screen === "course") render(); });
+  document.addEventListener("kb-images-store-fail", function () {
+    toast("이미지를 이 브라우저에 보관하지 못했습니다(저장 공간 부족·사생활 보호 창). 지금은 보이지만 다시 열면 사라질 수 있으니 교안 MD를 내려받아 두세요.");
+  });
   K.cui = {
     S: S, esc: esc, opt: opt, render: render, save: save, run: run, toast: toast,
     openDialog: openDialog, closeDialog: closeDialog, dialogOpen: dialogOpen, dialogEl: function () { return dlgBox; },

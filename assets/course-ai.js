@@ -17,6 +17,7 @@
   /* 화면의 '중지' 버튼·진행 글자 수를 모든 호출에 연결한다 (작업은 한 번에 하나) */
   var CTX = {};
   function setCallContext(o) { CTX = o || {}; }
+  function callAborted() { return !!(CTX.signal && CTX.signal.aborted); }
   function aicall(prompt, o) {
     var x = {};
     for (var k in (o || {})) x[k] = o[k];
@@ -645,7 +646,7 @@
   }
 
   K.courseAI = {
-    setCallContext: setCallContext, aicall: aicall,
+    setCallContext: setCallContext, callAborted: callAborted, aicall: aicall,
     planCourse: planCourse, planUnit: planUnit, recommendNcs: recommendNcs,
     generateUnit: generateUnit, generateModule: generateModule, buildOutputs: buildOutputs, hasTextbook: hasTextbook,
     generateCourse: generateCourse, remainingModules: remainingModules, moduleDone: moduleDone,

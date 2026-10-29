@@ -462,3 +462,15 @@ details.cs-rc > summary.cs-rc-h { display: list-item; font-size: 13.5px; }
 .cs-side-top .cs-gen-rest { width: 100%; margin-top: 6px; }
 .cs-existing { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; border-color: #cdbdfb; background: #faf8ff; }
 .cs-existing .cs-sub { margin: 4px 0 0; }
+/* 교안 본문 이미지 (교재 카드 아래) */
+.cs-photos { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.cs-photos-h { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 8px; }
+.cs-photos-h .cs-muted { font-size: 12px; }
+.cs-photo-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.cs-photo { margin: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; display: flex; flex-direction: column; }
+.cs-photo img, .cs-photo-miss { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; background: #f4f4f7; }
+.cs-photo-miss { display: flex; align-items: center; justify-content: center; font-size: 11px; color: #888; text-align: center; padding: 6px; box-sizing: border-box; }
+.cs-photo figcaption { font-size: 12px; padding: 6px 8px 2px; line-height: 1.4; overflow-wrap: anywhere; }
+.cs-photo-act { display: flex; gap: 10px; padding: 2px 8px 8px; font-size: 12px; }
+.cs-photo-note { margin: 10px 0 0; font-size: 12px; }
+.cs-book img { max-width: 100%; height: auto; border-radius: 8px; }

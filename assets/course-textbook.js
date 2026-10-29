@@ -194,15 +194,37 @@
           '<input class="cs-small" data-tb="ckref" data-i="' + i + '" value="' + esc(k.ref) + '" placeholder="다시 볼 곳 (예: 학습내용 ' + (i + 1) + ')"></div>' + lockBtn("k" + i) + "</div>";
       }).join("") + "</div>";
   }
-  /* 미리보기 = 내보내는 교안 MD 그대로 (기존 교안 양식) */
+  /* 미리보기 = 내보내는 교안 MD 그대로 (기존 교안 양식, 본문 이미지 포함) */
+  function withImages(md) { return K.autoImages ? K.autoImages.expandTags(md) : md; }
+  function bookMd(c) { return withImages(C().textbookModuleMd(c.course, c.unit, c.mi)); }
   function bookHtml(c) {
-    var src = C().textbookModuleMd(c.course, c.unit, c.mi);
+    var src = bookMd(c);
     return '<article class="cs-book md-render">' + (K.renderMarkdown ? K.renderMarkdown(src) : "<pre>" + esc(src) + "</pre>") + "</article>";
+  }
+  /* 교안 본문 이미지 — 소제목 아래에 들어간 그림 목록 · 빈 소제목 채우기 · 다시 만들기 · 빼기 */
+  function photoStrip(c) {
+    var m = c.module, L = K.lessonImages, A = K.autoImages;
+    if (!L || !A || !K.courseAI.hasTextbook(m)) return "";
+    var list = m.photos || [], miss = L.missing(m).length, on = L.enabled();
+    if (!list.length && !on) {
+      return '<p class="cs-muted cs-photo-note">🖼 교안 본문 이미지 — ' + (A.count() ? "Google API 키를 저장하면" : "④ 산출물에서 이미지 자동 생성을 켜면") +
+        " 학습내용의 소제목 아래에 그 내용을 보여 주는 그림을 자동으로 넣습니다.</p>";
+    }
+    var secTitle = function (p) { var s = ((m.content && m.content.sections) || [])[p.sec]; return "학습내용 " + (p.sec + 1) + (p.sub ? " › " + p.sub : s && s.title ? " › " + s.title : ""); };
+    return '<div class="cs-photos"><div class="cs-photos-h"><b>🖼 교안 본문 이미지</b><span class="cs-muted">소제목 아래에 들어갑니다 · ' + list.length + "장</span><div class=\"cs-spacer\"></div>" +
+      (on && miss ? '<button class="btn btn-ghost" data-act="tb-photos">빈 소제목에 이미지 만들기 (' + miss + "곳)</button>" : "") + "</div>" +
+      (list.length ? '<div class="cs-photo-row">' + list.map(function (p) {
+        var src = A.url(p.id);
+        return '<figure class="cs-photo">' + (src ? '<img src="' + esc(src) + '" alt="' + esc(p.title) + '" loading="lazy">' : '<div class="cs-photo-miss">이 브라우저에 그림이 없습니다</div>') +
+          '<figcaption title="' + esc(p.prompt || "") + '">' + esc(secTitle(p)) + "</figcaption>" +
+          '<div class="cs-photo-act">' + (on ? '<button class="cs-link" data-act="tb-photo-redo" data-id="' + esc(p.id) + '">다시 만들기</button>' : "") +
+          '<button class="cs-link cs-danger-t" data-act="tb-photo-del" data-id="' + esc(p.id) + '">빼기</button></div></figure>';
+      }).join("") + "</div>" : '<p class="cs-muted">아직 넣은 그림이 없습니다.</p>') + "</div>";
   }
   function bookCard(c, tb) {
     return '<div class="cs-card"><div class="cs-card-head"><h3>교재</h3><span class="cs-seg2"><button class="' + (ui.preview ? "" : "on") + '" data-act="tb-pv" data-v="0">편집</button><button class="' + (ui.preview ? "on" : "") + '" data-act="tb-pv" data-v="1">미리보기</button></span>' +
       '<div class="cs-spacer"></div><button class="btn btn-ghost" data-act="tb-md">.md 저장</button><button class="btn btn-ghost" data-act="tb-copy">복사</button></div>' +
-      '<div id="tb-area">' + (ui.preview ? bookHtml(c) : editorHtml(tb)) + "</div></div>";
+      '<div id="tb-area">' + (ui.preview ? bookHtml(c) : editorHtml(tb)) + "</div>" + photoStrip(c) + "</div>";
   }
 
   function render(c) {
@@ -502,7 +524,7 @@
           if (!K.courseAuto) { U().toast("초안을 만들었습니다. 오른쪽 검수 결과를 확인하세요."); return; }
           // 새 초안: 학습내용마다 삽화를 그려 넣고, 능력단위요소를 자동 배정한다(NCS 탭에서 확정)
           return K.courseAuto.afterTextbook(c.course, c.unit, m, function (l) { prog(l); }).then(function (a) {
-            U().toast("초안을 만들었습니다." + (a.ills ? " 삽화 " + a.ills + "개를 학습내용에 넣었습니다." : "") +
+            U().toast("초안을 만들었습니다." + (a.ills ? " 삽화 " + a.ills + "개를 학습내용에 넣었습니다." : "") + (a.photos ? " 본문 이미지 " + a.photos + "장을 소제목 아래에 넣었습니다." : "") +
               (a.ncs ? " NCS 능력단위요소를 자동 배정했습니다 — NCS 탭에서 확정하세요." : "") + " 오른쪽 검수 결과를 확인하세요.");
           });
         }
@@ -524,9 +546,9 @@
     },
     "tb-unlock-all": function () { ui.locks = []; U().render(); },
     "tb-pv": function (el) { ui.preview = el.dataset.v === "1"; U().render(); },
-    "tb-md": function (el, c) { U().download(U().safeName("교재 - " + c.module.title) + ".md", C().textbookModuleMd(c.course, c.unit, c.mi)); },
+    "tb-md": function (el, c) { U().download(U().safeName("교재 - " + c.module.title) + ".md", bookMd(c)); },
     "tb-copy": function (el, c) {
-      var text = C().textbookModuleMd(c.course, c.unit, c.mi);
+      var text = bookMd(c);
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { U().toast("교재 마크다운을 복사했습니다."); }, function () { U().toast("복사하지 못했습니다. .md 저장을 이용하세요."); });
       else U().toast("이 브라우저에서는 복사할 수 없습니다. .md 저장을 이용하세요.");
     },
@@ -620,6 +642,26 @@
           ui.scan = null;
         });
       });
+    },
+    "tb-photos": function (el, c) {
+      U().run("교안 본문 이미지 만드는 중…", function (prog) {
+        return K.lessonImages.generate(c.course, c.unit, c.module, function (l) { prog(l); }).then(function (r) {
+          if (r.made && c.unit.outputs) K.courseAI.buildOutputs(c.course, c.unit);
+          U().toast(r.made ? "본문 이미지 " + r.made + "장을 소제목 아래에 넣었습니다." + (r.failed ? " (실패 " + r.failed + "장)" : "")
+            : "이미지를 만들지 못했습니다" + (r.failed ? " (실패 " + r.failed + "장) — Google API 키·할당량을 확인하세요." : "."));
+        });
+      });
+    },
+    "tb-photo-redo": function (el, c) {
+      var id = el.dataset.id;
+      U().run("본문 이미지 다시 만드는 중…", function () {
+        return K.lessonImages.redo(c.course, c.unit, c.module, id).then(function (done) { U().toast(done ? "새 그림으로 바꿨습니다." : "다시 만들 수 없습니다."); });
+      });
+    },
+    "tb-photo-del": function (el, c) {
+      if (!K.lessonImages.remove(c.course, c.module, el.dataset.id)) return;
+      U().save(); U().render();
+      U().toast("그림을 뺐습니다. 「빈 소제목에 이미지 만들기」로 다시 넣을 수 있습니다.");
     },
     "tb-lesson": function (el, c) {
       var fresh = !K.courseAI.hasTextbook(c.module);
