@@ -5,8 +5,9 @@
   "use strict";
   var K = (window.KBuilder = window.KBuilder || {});
   /* [키, 탭 이름, 파일 이름, 부(part)의 필드] */
-  var FILES = [["doc", "📖 교수안.md", "교수안", "docMd"], ["deck", "🎬 슬라이드 편성안.md", "슬라이드 편성안", "deckMd"], ["text", "📘 교재(교습안).md", "교재(교습안)", "textMd"]];
-  var st = { file: "doc", view: "render" };
+  /* 학습자용 교안(기존 교안 양식)이 있으면 맨 앞 — 과정 설계에서 빌드한 경우 */
+  var FILES = [["text", "📘 교안(교재).md", "교안(교재)", "textMd"], ["doc", "📖 교수안.md", "교수안", "docMd"], ["deck", "🎬 슬라이드 편성안.md", "슬라이드 편성안", "deckMd"]];
+  var st = { file: "text", view: "render" };
 
   function current() { return K.app && K.app.currentMd ? K.app.currentMd() : { doc: "", deck: "", text: "", parts: null, part: null }; }
   /* 자동 이미지 표시([이미지:id])를 그림으로 — 렌더링·내려받기용 (원문 보기는 표시 그대로) */

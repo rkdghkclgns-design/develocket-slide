@@ -55,7 +55,7 @@
       '<label class="cs-check">🖼 빌드할 때 슬라이드 이미지 <select data-auto-img></select></label>' +
       '<span class="cs-muted">삽화는 글 AI가 SVG로, 슬라이드 이미지는 Google 키(Gemini)로 만들어 참고 이미지와 슬라이드 칸에 넣습니다.</span></div>' +
       card("📖", "교수안 — 차시별 " + sess.n + "개", "차시마다 기존 교수안 형식 — 도입 / 전개 N / 정리, 단계 제목에 소요 시간, 수업 흐름 표. 블록 도입·정리로 시작하거나 끝나지 않는 차시에는 5분 연결 단계를 넣습니다.", "doc", "교수안 - " + u.title + " (차시별).md", "전체 차시 MD") +
-      card("📘", "교재(교습안).md", "학습자용 — 블록마다 개요 → 학습목표 → 학습내용(삽화 포함) → 학습 후 체크리스트, 메타데이터(상태·소요 시간·툴·선행 모듈·NCS·변경 이력). 차시별 빌드에는 그 차시에 걸친 블록만 붙습니다.", "text", "교재 - " + u.title + ".md") +
+      card("📘", "교안(교재).md — 기존 교안 양식", "학습자용 — 블록마다 # 개요(학습 목표·학습 개요) → # 학습내용(## 소주제 + 글머리 문장, 삽화) → ✅ 체크리스트 → ❗오늘의 퀘스트(제출 파일명). 차시별 빌드에는 그 차시에 걸친 블록만 붙습니다.", "text", "교재 - " + u.title + ".md") +
       card("🎬", "슬라이드 편성안 — 차시별 " + sess.n + "개", "기존 편성안 형식 — 차시마다 표지·목차·마무리, 블록 슬라이드는 블록이 걸친 차시에 시간 비율대로 나눕니다.", "deck", "슬라이드 편성안 - " + u.title + " (차시별).md", "전체 차시 MD") +
       '<div class="cs-actions"><button class="btn btn-primary" data-act="open-review"' + (o ? "" : " disabled") + ">🎬 검토 후 슬라이드·문서로 빌드 (" + sess.n + "개 차시 · 드롭다운으로 이동) →</button>" +
       '<button class="btn btn-ghost" data-act="dl-qcsv"' + (qn ? "" : " disabled") + ">⤓ 이 단원 문제은행 CSV</button></div></div>" +

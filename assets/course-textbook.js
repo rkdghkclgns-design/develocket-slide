@@ -57,7 +57,6 @@
     flushP(); flushL();
     return out.join("");
   }
-  function svgURL(s) { return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(s); }
 
   /* ---------- 검수 표시 ---------- */
   function lintHtml(I) {
@@ -195,22 +194,15 @@
           '<input class="cs-small" data-tb="ckref" data-i="' + i + '" value="' + esc(k.ref) + '" placeholder="다시 볼 곳 (예: 학습내용 ' + (i + 1) + ')"></div>' + lockBtn("k" + i) + "</div>";
       }).join("") + "</div>";
   }
-  function bookHtml(c, tb) {
-    var m = c.module;
-    var tools = TB().toolsText(c.course, m);
-    return '<article class="cs-book"><h3>' + esc(m.title) + '</h3><div class="cs-muted">' + esc(tools) + (tools ? " · " : "") + "예상 소요 " + C().fmtMin(m.minutes) + "</div>" +
-      "<h4>개요</h4>" + md(tb.overview) + '<h4>학습목표</h4><ol>' + tb.objectives.map(function (o) { return "<li>" + inl(o) + "</li>"; }).join("") + "</ol><h4>학습내용</h4>" +
-      tb.sections.map(function (s, i) {
-        return "<h5>" + (i + 1) + ". " + inl(s.title) + "</h5>" + md(s.body) + (m.ills || []).filter(function (x) { return x.placement === i; }).map(function (x) {
-          return '<figure><img alt="' + esc(x.title) + '" src="' + svgURL(x.svg) + '"><figcaption>' + esc(x.caption || x.title) + "</figcaption></figure>";
-        }).join("");
-      }).join("") +
-      '<h4>학습 후 체크리스트</h4><ul class="cs-ck">' + tb.checklist.map(function (k) { return "<li>☐ " + inl(k.text) + (k.ref ? ' <span class="cs-muted">→ ' + esc(k.ref) + "</span>" : "") + "</li>"; }).join("") + "</ul></article>";
+  /* 미리보기 = 내보내는 교안 MD 그대로 (기존 교안 양식) */
+  function bookHtml(c) {
+    var src = C().textbookModuleMd(c.course, c.unit, c.mi);
+    return '<article class="cs-book md-render">' + (K.renderMarkdown ? K.renderMarkdown(src) : "<pre>" + esc(src) + "</pre>") + "</article>";
   }
   function bookCard(c, tb) {
     return '<div class="cs-card"><div class="cs-card-head"><h3>교재</h3><span class="cs-seg2"><button class="' + (ui.preview ? "" : "on") + '" data-act="tb-pv" data-v="0">편집</button><button class="' + (ui.preview ? "on" : "") + '" data-act="tb-pv" data-v="1">미리보기</button></span>' +
       '<div class="cs-spacer"></div><button class="btn btn-ghost" data-act="tb-md">.md 저장</button><button class="btn btn-ghost" data-act="tb-copy">복사</button></div>' +
-      '<div id="tb-area">' + (ui.preview ? bookHtml(c, tb) : editorHtml(tb)) + "</div></div>";
+      '<div id="tb-area">' + (ui.preview ? bookHtml(c) : editorHtml(tb)) + "</div></div>";
   }
 
   function render(c) {

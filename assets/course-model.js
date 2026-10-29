@@ -154,6 +154,18 @@
       });
     }
     (m.questions || []).forEach(function (q) { if (!q.rubric) q.rubric = []; });
+    // 예전에 줄글로 써 둔 교재는 기존 교안 양식(글머리 문장·## 소주제)으로 한 번 바꿔 저장한다
+    if (m.content && !m.content.lessonFmt) {
+      var cc = m.content, changed = false;
+      var ov = String(cc.overview || "").trim();
+      if (ov && !/^\s*[-*]\s/m.test(ov)) { cc.overview = sentences(ov).map(function (s) { return "- " + s; }).join("\n"); changed = true; }
+      (cc.sections || []).forEach(function (s) {
+        var nb = lessonBody(s.body);
+        if (String(s.body || "").trim() && nb !== String(s.body).trim()) { s.body = nb; changed = true; }
+      });
+      cc.lessonFmt = 1;
+      if (changed) logChange(m, "기존 교안 양식으로 정리 (줄글 → 글머리 문장, 소제목 ##)");
+    }
     return m;
   }
   function ensureCourse(c) {
@@ -513,6 +525,12 @@
   function sentences(text) {
     return String(text || "").replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s+(?=\S)/).filter(Boolean);
   }
+  /* 개요 → 글머리 문장 (이미 글머리면 그 줄들) */
+  function overviewBullets(text) {
+    var t = String(text || "").trim();
+    if (/^\s*[-*]\s/m.test(t)) return t.split("\n").map(function (l) { return l.replace(/^\s*[-*]\s+/, "").trim(); }).filter(Boolean);
+    return sentences(t);
+  }
   function lessonBody(body) {
     var out = [], para = [], inCode = false;
     var flush = function () { if (para.length) { sentences(para.join(" ")).forEach(function (s) { out.push("- " + s); }); para = []; } };
@@ -564,7 +582,7 @@
     objs.forEach(function (o) { L.push("- " + o); });
     if (!objs.length) L.push("- (학습목표를 '~할 수 있다'로 작성)");
     L.push("", "## 학습 개요", "");
-    var ov = sentences(c.overview);
+    var ov = overviewBullets(c.overview);
     if (ov.length) ov.forEach(function (s) { L.push("- " + s); });
     else L.push("- (이 학습모듈을 왜 배우는지 — 문제 상황 / 해결할 것 / 학습 후 가능해지는 것)");
     L.push(SECTION_GAP, "");

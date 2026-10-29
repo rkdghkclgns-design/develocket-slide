@@ -767,7 +767,7 @@
   };
   document.getElementById("btn-dl-active").addEventListener("click", function () {
     var pane = activeReviewPane();
-    var names = { rdoc: "교수안", rdeck: "슬라이드 편성안", rtext: "교재(교습안)" };
+    var names = { rdoc: "교수안", rdeck: "슬라이드 편성안", rtext: "교안(교재)" };
     var suffix = parts ? " - " + String(parts[partIdx].label || "").replace(/[\\/:*?"<>|]+/g, " ").trim() : "";
     // 자동 이미지 표시([이미지:id])는 그림으로 바꿔 내려받는다 — 파일만 있어도 그림이 남게
     download((names[pane.id] || "문서") + suffix + ".md", K.autoImages ? K.autoImages.expandTags(pane.value) : pane.value);
